@@ -1,0 +1,40 @@
+def safeExtGet(prop, fallback) {
+    rootProject.ext.has(prop) ? rootProject.ext.get(prop) : fallback
+}
+
+apply plugin: "com.android.library"
+
+android {
+    namespace "com.reactnativeopennhp"
+    compileSdkVersion safeExtGet("compileSdkVersion", 35)
+
+    defaultConfig {
+        minSdkVersion safeExtGet("minSdkVersion", 24)
+        targetSdkVersion safeExtGet("targetSdkVersion", 35)
+        ndk {
+            abiFilters "armeabi-v7a", "arm64-v8a", "x86", "x86_64"
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    externalNativeBuild {
+        cmake {
+            path "src/main/jni/CMakeLists.txt"
+        }
+    }
+
+    packagingOptions {
+        pickFirst "lib/arm64-v8a/libnhpagent.so"
+        pickFirst "lib/armeabi-v7a/libnhpagent.so"
+        pickFirst "lib/x86/libnhpagent.so"
+        pickFirst "lib/x86_64/libnhpagent.so"
+    }
+}
+
+dependencies {
+    implementation "com.facebook.react:react-native:+"
+}

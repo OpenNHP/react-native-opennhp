@@ -1,0 +1,8 @@
+framework module "Nhpagent" {
+	header "ref.h"
+    header "Iossdk.objc.h"
+    header "Universe.objc.h"
+    header "Nhpagent.h"
+
+    export *
+}
