@@ -23,6 +23,7 @@ Official OpenNHP agent SDK reference: [docs.opennhp.org/agent_sdk](https://docs.
 - [Configuration](#configuration)
 - [API](#api)
 - [Which OpenNHP revision to ship](#which-opennhp-revision-to-ship)
+- [To do](#to-do)
 - [More documentation](#more-documentation)
 
 ## Requirements
@@ -226,6 +227,11 @@ Keep this module pinned to one OpenNHP commit. A floating "latest" build would c
 The binaries in this repository are pinned to main commit `3c78548` (2026-10-21), recorded in `OPENNHP_REVISION`. That commit is newer than the latest GitHub release, [v1.0.2](https://github.com/OpenNHP/opennhp/releases/tag/v1.0.2) (2026-09-11). Main includes later agent work, including sealed private keys and agent DNS error reporting.
 
 Use a release tag as the pin when you want a numbered OpenNHP contract and release notes. Keep this main snapshot when you want those later agent fixes. Rebuilding onto v1.0.2, or onto a future tag, is a deliberate SDK upgrade: change `COMMIT` in `scripts/build-sdks.sh`, run the script, and update `OPENNHP_REVISION`.
+
+## To do
+
+- [ ] Build from the latest OpenNHP release instead of the pinned commit `3c78548`.
+- [ ] Move the iOS and Android SDKs into their own repository and include that repository here, so SDK releases and this React Native module can be updated separately.
 
 ## More documentation
 
