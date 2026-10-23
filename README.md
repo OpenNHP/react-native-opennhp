@@ -19,6 +19,7 @@ Official OpenNHP agent SDK reference: [docs.opennhp.org/agent_sdk](https://docs.
 - [Requirements](#requirements)
 - [Install](#install)
 - [Quick start](#quick-start)
+- [Become a trusted device](#become-a-trusted-device)
 - [Configuration](#configuration)
 - [API](#api)
 - [Which OpenNHP revision to ship](#which-opennhp-revision-to-ship)
@@ -118,9 +119,29 @@ if (ack.errCode !== "0") {
 
 When the server was added with `addServer`, pass that server's public key as the `cluster` argument. When the server comes from `server.toml`, pass the `[[Servers]] Name` instead.
 
-## Register a device
+## Become a trusted device
 
-Registration is two calls. Put `etc/server.toml` in the working directory first so the agent can find the nhp-server. `config.toml` can be absent. The server emails a one-time password to `email`.
+A knock is accepted only after the auth service knows this device's public key. There are two ways to get there.
+
+### Add the public key by hand
+
+Generate a key pair, store the private key in `etc/config.toml`, and give the public key to whoever administers the auth service. They add it as a trusted device for that user. No email step is involved. The app can knock once that key is recognized.
+
+```js
+import { Cipher, generateKeys } from "react-native-opennhp";
+
+const keys = await generateKeys(Cipher.CURVE25519);
+// Save keys.privateKey in etc/config.toml.
+// Register keys.publicKey with the auth service by hand.
+```
+
+### Register with a one-time password
+
+The app can enroll itself. `requestRegistrationOtp` asks the server to email a code, then `registerDevice` submits that code with this device's public key. The server needs SMTP for that mail.
+
+Put `etc/server.toml` in the working directory first so the agent can find the nhp-server. `config.toml` can be absent for these two calls. On a server installed with the OpenNHP installer, a debug configuration also writes the one-time password to the server logs. Use that log line when mail is not being delivered.
+
+The published OpenNHP iOS and Android SDKs do not export this flow. These two methods are provided by this module.
 
 ```js
 import { requestRegistrationOtp, registerDevice } from "react-native-opennhp";
