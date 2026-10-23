@@ -14,7 +14,7 @@ To move the pin, set `RELEASE` in `scripts/build-sdks.sh` to the new tag, run th
 
 1. Clones `https://github.com/OpenNHP/opennhp` into `third_party/opennhp` if needed.
 2. Checks out `RELEASE`.
-3. Applies two patches, in order. `scripts/opennhp-agent-init-fix.patch` assigns `gAgentInstance` only after `Start` succeeds, so a failed start does not make the next init look successful. `scripts/opennhp-agent-sdk.patch` is the rest: it removes an unused `import "C"` so `gomobile` can compile the iOS package, keeps registration in `endpoints/agent/sdk_register.go` with thin iOS and Android wrappers, and adds `NhpAgentInitWithKey` so the agent can start from a key held by the platform secure store instead of `config.toml`.
+3. Applies two patches, in order. `scripts/opennhp-agent-init-fix.patch` assigns `gAgentInstance` only after `Start` succeeds, so a failed start does not make the next init look successful. `scripts/opennhp-agent-sdk.patch` is the rest: it removes an unused `import "C"` so `gomobile` can compile the iOS package, keeps registration in `endpoints/agent/sdk_register.go` with thin iOS and Android wrappers, and adds `NhpAgentInitWithKey` so the agent can start from a key held by the platform secure store instead of `config.toml`. Registration does not call `ReinitWithKey` on an agent that is already running.
 4. Selects `golang.org/x/mobile` at `v0.0.0-20261011034528-197770444867`. The revision shipped in the OpenNHP module file is too old for current `gomobile`.
 5. Builds `libnhpagent.so` for `arm64-v8a`, `armeabi-v7a`, `x86`, and `x86_64` with the Android NDK (API 21 clang).
 6. Builds `nhpagent.xcframework` with `gomobile bind -target ios -iosversion=15.1`.

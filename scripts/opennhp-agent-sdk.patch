@@ -1,15 +1,17 @@
 diff --git a/endpoints/agent/iossdk/export.go b/endpoints/agent/iossdk/export.go
-index 9a63936..26f4c31 100644
+index 9a63936..61797b3 100644
 --- a/endpoints/agent/iossdk/export.go
 +++ b/endpoints/agent/iossdk/export.go
-@@ -1,6 +1,5 @@
+@@ -1,6 +1,7 @@
  package iossdk
  
 -import "C"
++// This file is bound with gomobile. It never calls C. An unused import "C"
++// would mark the file as cgo, which gomobile cannot bind.
  import (
  	"encoding/base64"
  	"encoding/json"
-@@ -42,6 +41,29 @@ func NhpAgentInit(workingDir string, logLevel int) bool {
+@@ -42,6 +43,29 @@ func NhpAgentInit(workingDir string, logLevel int) bool {
  	return true
  }
  
@@ -39,36 +41,30 @@ index 9a63936..26f4c31 100644
  // Synchronously stop and release nhp_
  func NhpAgentClose() {
  	if gAgentInstance == nil {
-@@ -386,3 +408,27 @@ func NhpPrivkeyToPubkey(cipherType int, privateBase64 string) string {
+@@ -386,3 +410,21 @@ func NhpPrivkeyToPubkey(cipherType int, privateBase64 string) string {
  
  	return pub
  }
 +
-+func keepRegistrationAgent(instance *agent.UdpAgent) {
-+	gAgentInstance = instance
-+}
-+
 +// Request a one-time password so this device key can be registered.
-+// The server emails the code to email. privateKey may be empty to generate a new key.
++// The server emails the code to email. privateKey may be empty to generate a
++// new key when no agent is running. A running agent is not re-keyed.
 +func NhpAgentRequestOtp(workingDir string, logLevel int, privateKey string, cipherType int, email string, deviceId string, orgId string, userData string, aspId string, resId string, cluster string) string {
-+	result, instance := agent.RequestRegistrationOtp(
++	return agent.RequestRegistrationOtp(
 +		gAgentInstance, workingDir, logLevel, privateKey, cipherType, email, deviceId, orgId, userData, aspId, resId, cluster,
-+	)
-+	keepRegistrationAgent(instance)
-+	return result.JSON()
++	).JSON()
 +}
 +
-+// Register the current device public key with the one-time password from NhpAgentRequestOtp.
-+// Pass the same privateKey that the OTP request returned.
++// Register the device public key with the one-time password from NhpAgentRequestOtp.
++// Pass the same privateKey that the OTP request returned. An empty privateKey is
++// rejected when no running agent already holds that key. A running agent is not re-keyed.
 +func NhpAgentRegister(workingDir string, logLevel int, privateKey string, cipherType int, email string, deviceId string, orgId string, userData string, aspId string, resId string, cluster string, otp string) string {
-+	result, instance := agent.RegisterDevice(
++	return agent.RegisterDevice(
 +		gAgentInstance, workingDir, logLevel, privateKey, cipherType, email, deviceId, orgId, userData, aspId, resId, cluster, otp,
-+	)
-+	keepRegistrationAgent(instance)
-+	return result.JSON()
++	).JSON()
 +}
 diff --git a/endpoints/agent/main/export.go b/endpoints/agent/main/export.go
-index 64aa440..dd7832a 100644
+index 64aa440..0040451 100644
 --- a/endpoints/agent/main/export.go
 +++ b/endpoints/agent/main/export.go
 @@ -63,6 +63,32 @@ func nhp_agent_init(workingDir *C.char, logLevel C.int) bool {
@@ -104,53 +100,48 @@ index 64aa440..dd7832a 100644
  // Synchronously stop and release nhp_agent.
  //
  //export nhp_agent_close
-@@ -428,3 +454,40 @@ func nhp_privkey_to_pubkey(cipherType C.int, privateBase64 *C.char) *C.char {
+@@ -428,3 +454,35 @@ func nhp_privkey_to_pubkey(cipherType C.int, privateBase64 *C.char) *C.char {
  
  	return pPub
  }
-+
-+func keepRegistrationAgent(instance *agent.UdpAgent) {
-+	gAgentInstance = instance
-+}
 +
 +func registrationJSON(result agent.RegistrationResult) *C.char {
 +	return C.CString(result.JSON())
 +}
 +
 +// Request a one-time password so this device key can be registered.
-+// The server emails the code to email. privateKey may be empty to generate a new key.
++// The server emails the code to email. privateKey may be empty to generate a
++// new key when no agent is running. A running agent is not re-keyed.
 +// The caller must free the returned string with nhp_free_cstring.
 +//
 +//export nhp_agent_request_otp
 +func nhp_agent_request_otp(workingDir *C.char, logLevel C.int, privateKey *C.char, cipherType C.int, email *C.char, deviceId *C.char, orgId *C.char, userData *C.char, aspId *C.char, resId *C.char, cluster *C.char) *C.char {
-+	result, instance := agent.RequestRegistrationOtp(
++	return registrationJSON(agent.RequestRegistrationOtp(
 +		gAgentInstance, deepCopyCString(workingDir), int(logLevel), deepCopyCString(privateKey), int(cipherType),
 +		deepCopyCString(email), deepCopyCString(deviceId), deepCopyCString(orgId), deepCopyCString(userData),
 +		deepCopyCString(aspId), deepCopyCString(resId), deepCopyCString(cluster),
-+	)
-+	keepRegistrationAgent(instance)
-+	return registrationJSON(result)
++	))
 +}
 +
-+// Register the current device public key with the one-time password from nhp_agent_request_otp.
-+// Pass the same privateKey that request returned. The caller must free the returned string with nhp_free_cstring.
++// Register the device public key with the one-time password from nhp_agent_request_otp.
++// Pass the same privateKey that request returned. An empty privateKey is rejected
++// when no running agent already holds that key. A running agent is not re-keyed.
++// The caller must free the returned string with nhp_free_cstring.
 +//
 +//export nhp_agent_register
 +func nhp_agent_register(workingDir *C.char, logLevel C.int, privateKey *C.char, cipherType C.int, email *C.char, deviceId *C.char, orgId *C.char, userData *C.char, aspId *C.char, resId *C.char, cluster *C.char, otp *C.char) *C.char {
-+	result, instance := agent.RegisterDevice(
++	return registrationJSON(agent.RegisterDevice(
 +		gAgentInstance, deepCopyCString(workingDir), int(logLevel), deepCopyCString(privateKey), int(cipherType),
 +		deepCopyCString(email), deepCopyCString(deviceId), deepCopyCString(orgId), deepCopyCString(userData),
 +		deepCopyCString(aspId), deepCopyCString(resId), deepCopyCString(cluster), deepCopyCString(otp),
-+	)
-+	keepRegistrationAgent(instance)
-+	return registrationJSON(result)
++	))
 +}
 diff --git a/endpoints/agent/sdk_register.go b/endpoints/agent/sdk_register.go
 new file mode 100644
-index 0000000..e90fe8b
+index 0000000..3790265
 --- /dev/null
 +++ b/endpoints/agent/sdk_register.go
-@@ -0,0 +1,237 @@
+@@ -0,0 +1,281 @@
 +package agent
 +
 +import (
@@ -227,22 +218,28 @@ index 0000000..e90fe8b
 +	return instance, nil
 +}
 +
-+// EnsureRegistrationAgent returns the running agent, or starts one that can
-+// tolerate a missing config.toml. A stopped agent is replaced.
-+func EnsureRegistrationAgent(current *UdpAgent, workingDir string, logLevel int) (*UdpAgent, error) {
-+	if current != nil && current.IsRunning() {
-+		return current, nil
++func agentCipherScheme(a *UdpAgent) int {
++	if a == nil || a.config == nil {
++		return common.CIPHER_SCHEME_CURVE
 +	}
-+	return StartAllowingMissingConfig(workingDir, logLevel)
++	return a.config.DefaultCipherScheme
 +}
 +
-+// InstallRegistrationKey installs privateKey on the running agent. An empty
++func invalidRegistration(msg string) RegistrationResult {
++	return RegistrationResult{
++		ErrCode: common.ErrInvalidInput.ErrorCode(),
++		ErrMsg:  msg,
++	}
++}
++
++// InstallRegistrationKey installs privateKey on an idle agent. An empty
 +// privateKey generates a new key for cipherType (0 Curve25519, 1 SM2).
++// When the key already matches, a different cipherType is still applied.
 +func InstallRegistrationKey(a *UdpAgent, privateKey string, cipherType int) error {
 +	if a == nil {
 +		return fmt.Errorf("agent is not started")
 +	}
-+	if privateKey != "" && a.PrivateKeyBase64() == privateKey {
++	if privateKey != "" && a.PrivateKeyBase64() == privateKey && agentCipherScheme(a) == cipherSchemeFor(cipherType) {
 +		return nil
 +	}
 +	var priv []byte
@@ -297,78 +294,116 @@ index 0000000..e90fe8b
 +	}, nil
 +}
 +
-+func prepareRegistration(current *UdpAgent, workingDir string, logLevel int, privateKey string, cipherType int, email string, deviceId string, orgId string, userData string, aspId string, resId string, cluster string, generateKey bool) (RegistrationResult, *UdpAgent, *KnockTarget) {
-+	result := RegistrationResult{}
++// prepareRegistration selects an agent that can send the OTP or register call.
++// A running agent is used only when its key and cipher scheme already match.
++// ReinitWithKey is not called on that agent. Any other case starts a
++// short-lived agent, which the caller must Stop, and which must not replace
++// the caller's saved instance.
++func prepareRegistration(current *UdpAgent, workingDir string, logLevel int, privateKey string, cipherType int, email string, deviceId string, orgId string, userData string, aspId string, resId string, cluster string, generateKey bool) (RegistrationResult, *UdpAgent, *KnockTarget, bool) {
 +	if email == "" || aspId == "" || resId == "" || cluster == "" {
-+		result.ErrCode = common.ErrInvalidInput.ErrorCode()
-+		result.ErrMsg = "email, aspId, resId, and cluster are required"
-+		return result, current, nil
++		return invalidRegistration("email, aspId, resId, and cluster are required"), nil, nil, false
 +	}
-+	instance, err := EnsureRegistrationAgent(current, workingDir, logLevel)
-+	if err != nil {
-+		result.ErrCode = registrationErrorCode(err)
-+		result.ErrMsg = err.Error()
-+		return result, nil, nil
++
++	scheme := cipherSchemeFor(cipherType)
++	var instance *UdpAgent
++	owned := false
++	if current != nil && current.IsRunning() {
++		switch {
++		case privateKey == "" && generateKey:
++			return invalidRegistration("close the running agent before generating a registration key"), nil, nil, false
++		case privateKey == "" && current.PrivateKeyBase64() == "":
++			return invalidRegistration("privateKey is required"), nil, nil, false
++		case privateKey != "" && current.PrivateKeyBase64() != privateKey:
++			return invalidRegistration("close the running agent before registering a different key"), nil, nil, false
++		case agentCipherScheme(current) != scheme:
++			return invalidRegistration("close the running agent before changing the cipher scheme"), nil, nil, false
++		default:
++			instance = current
++		}
++	} else if privateKey == "" && !generateKey {
++		return invalidRegistration("privateKey is required"), nil, nil, false
++	} else {
++		started, err := StartAllowingMissingConfig(workingDir, logLevel)
++		if err != nil {
++			return RegistrationResult{
++				ErrCode: registrationErrorCode(err),
++				ErrMsg:  err.Error(),
++			}, nil, nil, false
++		}
++		instance = started
++		owned = true
++		if err := InstallRegistrationKey(instance, privateKey, cipherType); err != nil {
++			instance.Stop()
++			return RegistrationResult{
++				ErrCode: registrationErrorCode(err),
++				ErrMsg:  err.Error(),
++			}, nil, nil, false
++		}
 +	}
-+	key := privateKey
-+	if key == "" && !generateKey {
-+		key = instance.PrivateKeyBase64()
-+	}
-+	if err := InstallRegistrationKey(instance, key, cipherType); err != nil {
-+		result.ErrCode = registrationErrorCode(err)
-+		result.ErrMsg = err.Error()
-+		return result, instance, nil
-+	}
++
 +	if err := applyRegistrationUser(instance, email, deviceId, orgId, userData); err != nil {
-+		result.ErrCode = common.ErrInvalidInput.ErrorCode()
-+		result.ErrMsg = err.Error()
-+		return result, instance, nil
++		if owned {
++			instance.Stop()
++		}
++		return invalidRegistration(err.Error()), nil, nil, false
 +	}
-+	result.PrivateKey = instance.PrivateKeyBase64()
-+	result.PublicKey = instance.PublicKeyBase64ByCipherScheme()
++	result := RegistrationResult{
++		PrivateKey: instance.PrivateKeyBase64(),
++		PublicKey:  instance.PublicKeyBase64ByCipherScheme(),
++	}
 +	target, err := registrationTarget(instance, aspId, resId, cluster)
 +	if err != nil {
++		if owned {
++			instance.Stop()
++		}
 +		result.ErrCode = registrationErrorCode(err)
 +		result.ErrMsg = err.Error()
-+		return result, instance, nil
++		return result, nil, nil, false
 +	}
-+	return result, instance, target
++	return result, instance, target, owned
++}
++
++func finishOwnedAgent(instance *UdpAgent, owned bool) {
++	if owned && instance != nil {
++		instance.Stop()
++	}
 +}
 +
 +// RequestRegistrationOtp sends NHP-OTP for this agent key. An empty privateKey
-+// generates a key when the secure store does not already have one. The returned
-+// agent replaces the caller's saved instance, including nil when startup fails.
-+func RequestRegistrationOtp(current *UdpAgent, workingDir string, logLevel int, privateKey string, cipherType int, email string, deviceId string, orgId string, userData string, aspId string, resId string, cluster string) (RegistrationResult, *UdpAgent) {
-+	result, instance, target := prepareRegistration(
++// generates a key only when no agent is running. A running agent is never re-keyed.
++func RequestRegistrationOtp(current *UdpAgent, workingDir string, logLevel int, privateKey string, cipherType int, email string, deviceId string, orgId string, userData string, aspId string, resId string, cluster string) RegistrationResult {
++	result, instance, target, owned := prepareRegistration(
 +		current, workingDir, logLevel, privateKey, cipherType, email, deviceId, orgId, userData, aspId, resId, cluster, true,
 +	)
++	defer finishOwnedAgent(instance, owned)
 +	if target == nil {
-+		return result, instance
++		return result
 +	}
 +	if err := instance.RequestOtp(target); err != nil {
 +		result.ErrCode = registrationErrorCode(err)
 +		result.ErrMsg = err.Error()
-+		return result, instance
++		return result
 +	}
++	result.PrivateKey = instance.PrivateKeyBase64()
++	result.PublicKey = instance.PublicKeyBase64ByCipherScheme()
 +	result.ErrCode = common.ErrSuccess.ErrorCode()
-+	return result, instance
++	return result
 +}
 +
-+// RegisterDevice submits the one-time password for the key installed by
-+// RequestRegistrationOtp. The returned agent is the instance the SDK wrapper
-+// should retain.
-+func RegisterDevice(current *UdpAgent, workingDir string, logLevel int, privateKey string, cipherType int, email string, deviceId string, orgId string, userData string, aspId string, resId string, cluster string, otp string) (RegistrationResult, *UdpAgent) {
++// RegisterDevice submits the one-time password for the key from
++// RequestRegistrationOtp. privateKey must be that key. An empty privateKey is
++// accepted only when current is running and already holds one. A running agent
++// is never re-keyed.
++func RegisterDevice(current *UdpAgent, workingDir string, logLevel int, privateKey string, cipherType int, email string, deviceId string, orgId string, userData string, aspId string, resId string, cluster string, otp string) RegistrationResult {
 +	if otp == "" {
-+		return RegistrationResult{
-+			ErrCode: common.ErrInvalidInput.ErrorCode(),
-+			ErrMsg:  "otp is required",
-+		}, current
++		return invalidRegistration("otp is required")
 +	}
-+	result, instance, target := prepareRegistration(
++	result, instance, target, owned := prepareRegistration(
 +		current, workingDir, logLevel, privateKey, cipherType, email, deviceId, orgId, userData, aspId, resId, cluster, false,
 +	)
++	defer finishOwnedAgent(instance, owned)
 +	if target == nil {
-+		return result, instance
++		return result
 +	}
 +	ack, err := instance.RegisterPublicKey(otp, target)
 +	if ack != nil {
@@ -386,7 +421,7 @@ index 0000000..e90fe8b
 +	}
 +	result.PrivateKey = instance.PrivateKeyBase64()
 +	result.PublicKey = instance.PublicKeyBase64ByCipherScheme()
-+	return result, instance
++	return result
 +}
 diff --git a/nhp/log/globalLog.go b/nhp/log/globalLog.go
 index 9956ede..a8af9b7 100644

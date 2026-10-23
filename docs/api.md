@@ -172,7 +172,7 @@ Tells the server to drop this resource's opening. Returns `true` when the SDK re
 
 `requestRegistrationOtp` and `registerDevice` follow the `nhp-agentd register` flow: ask the server to email a one-time password, then submit that code with this device's public key.
 
-`etc/server.toml` must already name the cluster, or a previous `addServer` call must have registered that server on the running agent. The agent can start without `config.toml`. When the secure store is empty, the OTP request generates a key and stores it. When a key is already stored, that key is the one registered.
+`etc/server.toml` must already name the cluster. Registration does not replace the key of an agent that is already running. When that agent holds the same key and cipher scheme, the OTP and register calls use it, including any server added with `addServer`. Otherwise close the agent first. A new key is generated only when no agent is running, and that call reads `server.toml` from the working directory. When the secure store is empty, the OTP request generates a key and stores it. When a key is already stored, that key is the one registered.
 
 ```ts
 type RegistrationOptions = {
