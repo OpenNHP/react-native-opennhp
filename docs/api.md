@@ -163,6 +163,54 @@ When the response is not JSON, the promise still resolves, with `errCode` set to
 
 Tells the server to drop this resource's opening. Returns `true` when the SDK reports success.
 
+## Device registration
+
+`requestRegistrationOtp` and `registerDevice` follow the `nhp-agentd register` flow: ask the server to email a one-time password, then submit that code with this device's public key.
+
+`etc/server.toml` must already name the cluster, or a previous `addServer` call must have registered that server on the running agent. `config.toml` may be missing. The agent starts with a temporary key in that case, then replaces it with the registration key.
+
+```ts
+type RegistrationOptions = {
+  workingDirectory: string;
+  logLevel?: LogLevelValue;
+  privateKey?: string;
+  cipher?: CipherValue;
+  email: string;
+  deviceId?: string;
+  orgId?: string;
+  userData?: Record<string, unknown> | string;
+  aspId: string;
+  resId: string;
+  cluster: string;
+};
+```
+
+### `requestRegistrationOtp(options)`
+
+Sends `NHP-OTP`. `email` is the user id and `UserData.email`, which is where the server sends the code. Omit `privateKey` to generate a Curve25519 key (`cipher` selects SM2 instead).
+
+Resolves to:
+
+```ts
+type RegistrationResult = {
+  errCode?: string;
+  errMsg?: string;
+  privateKey?: string;
+  publicKey?: string;
+  raw?: string;
+};
+```
+
+`errCode` `"0"` means the OTP request was sent. Keep `privateKey`. The call does not wait for the email itself.
+
+### `registerDevice({ ...options, otp, privateKey })`
+
+Sends `NHP-REG` with the same identity, cluster, cipher, and `privateKey` used for the OTP request. A different private key invalidates the code.
+
+On success, `errCode` is `"0"`. `expiresAt` is Unix seconds when the server limited the key lifetime, and it is omitted when the key does not expire. `aspId` echoes the auth service when the server sends it.
+
+Write `privateKey` into `etc/config.toml` with the matching `DefaultCipherScheme`. The running agent already has the key in memory, so knocks work until `close`. The next process start needs the file.
+
 ## Errors from the native bridge
 
 A native crash or a linkage failure rejects the promise with code `E_OPENNHP` on Android. iOS rejects through the React Native bridge. If `NativeModules.OpenNhp` is missing, the JavaScript call throws `react-native-opennhp is not linked` before any native work. Rebuild after install, and run `pod install` on iOS.

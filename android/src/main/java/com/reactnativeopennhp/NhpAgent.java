@@ -35,4 +35,31 @@ public final class NhpAgent {
   public static native String generateKeys(int cipher);
 
   public static native String privateKeyToPublicKey(int cipher, String privateKey);
+
+  public static native String requestRegistrationOtp(
+      String workingDirectory,
+      int logLevel,
+      String privateKey,
+      int cipher,
+      String email,
+      String deviceId,
+      String orgId,
+      String userData,
+      String aspId,
+      String resId,
+      String cluster);
+
+  public static native String registerDevice(
+      String workingDirectory,
+      int logLevel,
+      String privateKey,
+      int cipher,
+      String email,
+      String deviceId,
+      String orgId,
+      String userData,
+      String aspId,
+      String resId,
+      String cluster,
+      String otp);
 }

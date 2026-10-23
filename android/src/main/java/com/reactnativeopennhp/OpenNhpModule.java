@@ -129,4 +129,70 @@ public class OpenNhpModule extends ReactContextBaseJavaModule {
   public void privateKeyToPublicKey(int cipher, String privateKey, Promise promise) {
     run(promise, () -> promise.resolve(NhpAgent.privateKeyToPublicKey(cipher, privateKey)));
   }
+
+  @ReactMethod
+  public void requestRegistrationOtp(
+      String workingDirectory,
+      int logLevel,
+      String privateKey,
+      int cipher,
+      String email,
+      String deviceId,
+      String orgId,
+      String userData,
+      String aspId,
+      String resId,
+      String cluster,
+      Promise promise) {
+    run(
+        promise,
+        () ->
+            promise.resolve(
+                NhpAgent.requestRegistrationOtp(
+                    workingDirectory,
+                    logLevel,
+                    privateKey,
+                    cipher,
+                    email,
+                    deviceId,
+                    orgId,
+                    userData,
+                    aspId,
+                    resId,
+                    cluster)));
+  }
+
+  @ReactMethod
+  public void registerDevice(
+      String workingDirectory,
+      int logLevel,
+      String privateKey,
+      int cipher,
+      String email,
+      String deviceId,
+      String orgId,
+      String userData,
+      String aspId,
+      String resId,
+      String cluster,
+      String otp,
+      Promise promise) {
+    run(
+        promise,
+        () ->
+            promise.resolve(
+                NhpAgent.registerDevice(
+                    workingDirectory,
+                    logLevel,
+                    privateKey,
+                    cipher,
+                    email,
+                    deviceId,
+                    orgId,
+                    userData,
+                    aspId,
+                    resId,
+                    cluster,
+                    otp)));
+  }
 }

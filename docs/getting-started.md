@@ -86,6 +86,36 @@ The third argument to `knockResource` is the cluster id. For a server added with
 
 A successful ack has `errCode` equal to the string `"0"`. `resHost` lists the hosts that were opened. `opnTime` is the open duration in seconds. `aspToken` and `redirectUrl` are present only when the server sends them.
 
+## Register this device
+
+Use this when the server must enroll the device key before it will accept knocks. Copy `server.toml` into `etc` first. `config.toml` can wait until registration returns a private key.
+
+```js
+import { requestRegistrationOtp, registerDevice } from "react-native-opennhp";
+
+const pending = await requestRegistrationOtp({
+  workingDirectory,
+  email: "user@example.com",
+  deviceId: "phone-1",
+  aspId: "example",
+  resId: "demo",
+  cluster: "production",
+});
+
+const registered = await registerDevice({
+  workingDirectory,
+  email: "user@example.com",
+  deviceId: "phone-1",
+  aspId: "example",
+  resId: "demo",
+  cluster: "production",
+  privateKey: pending.privateKey,
+  otp: "123456",
+});
+```
+
+`pending.errCode` and `registered.errCode` are `"0"` on success. Write `registered.privateKey` into `etc/config.toml` for the next launch. Field details are in [the API page](api.md).
+
 ## 6. Stop
 
 ```js

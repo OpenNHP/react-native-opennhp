@@ -17,9 +17,7 @@ fi
 
 git -C "$SRC" fetch --depth 1 origin "$COMMIT"
 git -C "$SRC" checkout -f "$COMMIT"
-
-perl -0pi -e 's/package iossdk\n\nimport "C"\nimport \(/package iossdk\n\nimport (/s' \
-  "$ENDPOINTS/agent/iossdk/export.go"
+git -C "$SRC" apply "$ROOT/scripts/opennhp-agent-sdk.patch"
 
 (
   cd "$ENDPOINTS"

@@ -123,6 +123,12 @@ FOUNDATION_EXPORT long IossdkNhpAgentKnockloopStart(void);
 FOUNDATION_EXPORT void IossdkNhpAgentKnockloopStop(void);
 
 /**
+ * Register the current device public key with the one-time password from NhpAgentRequestOtp.
+Pass the same privateKey that the OTP request returned.
+ */
+FOUNDATION_EXPORT NSString* _Nonnull IossdkNhpAgentRegister(NSString* _Nullable workingDir, long logLevel, NSString* _Nullable privateKey, long cipherType, NSString* _Nullable email, NSString* _Nullable deviceId, NSString* _Nullable orgId, NSString* _Nullable userData, NSString* _Nullable aspId, NSString* _Nullable resId, NSString* _Nullable cluster, NSString* _Nullable otp);
+
+/**
  * Delete resource information from the agent
 
 Input:
@@ -138,6 +144,12 @@ Input:
 pubkey: NHP server public key
  */
 FOUNDATION_EXPORT void IossdkNhpAgentRemoveServer(NSString* _Nullable pubkey);
+
+/**
+ * Request a one-time password so this device key can be registered.
+The server emails the code to email. privateKey may be empty to generate a new key.
+ */
+FOUNDATION_EXPORT NSString* _Nonnull IossdkNhpAgentRequestOtp(NSString* _Nullable workingDir, long logLevel, NSString* _Nullable privateKey, long cipherType, NSString* _Nullable email, NSString* _Nullable deviceId, NSString* _Nullable orgId, NSString* _Nullable userData, NSString* _Nullable aspId, NSString* _Nullable resId, NSString* _Nullable cluster);
 
 /**
  * Setting agent's represented user information

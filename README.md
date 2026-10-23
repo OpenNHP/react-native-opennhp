@@ -118,6 +118,41 @@ if (ack.errCode !== "0") {
 
 When the server was added with `addServer`, pass that server's public key as the `cluster` argument. When the server comes from `server.toml`, pass the `[[Servers]] Name` instead.
 
+## Register a device
+
+Registration is two calls. Put `etc/server.toml` in the working directory first so the agent can find the nhp-server. `config.toml` can be absent. The server emails a one-time password to `email`.
+
+```js
+import { requestRegistrationOtp, registerDevice } from "react-native-opennhp";
+
+const pending = await requestRegistrationOtp({
+  workingDirectory,
+  email: "user@example.com",
+  deviceId: "phone-1",
+  orgId: "example.org",
+  aspId: "example",
+  resId: "demo",
+  cluster: "production",
+});
+if (pending.errCode !== "0") {
+  throw new Error(pending.errMsg || "OTP request failed");
+}
+
+const registered = await registerDevice({
+  workingDirectory,
+  email: "user@example.com",
+  deviceId: "phone-1",
+  orgId: "example.org",
+  aspId: "example",
+  resId: "demo",
+  cluster: "production",
+  privateKey: pending.privateKey,
+  otp: codeFromEmail,
+});
+```
+
+Save `registered.privateKey` into `etc/config.toml` before the next cold start. These calls do not write that file. `registered.errCode === "0"` means the server accepted the public key. `expiresAt` is a Unix timestamp when the server set a key lifetime.
+
 ## Configuration
 
 Layout the SDK expects:
@@ -145,6 +180,8 @@ Every method except `getDefaultWorkingDirectory()` returns a promise. Native cal
 | `getDefaultWorkingDirectory()` | App directory to use as `workingDirectory`. |
 | `generateKeys(cipher)` | New key pair. `Cipher.CURVE25519` (`0`) or `Cipher.SM2` (`1`). |
 | `privateKeyToPublicKey(privateKey, cipher)` | Public key for an existing private key. |
+| `requestRegistrationOtp(options)` | Email a one-time password and return the device key pair. |
+| `registerDevice(options)` | Register that public key with the one-time password. |
 | `initializeAgent(dir, logLevel)` | Start the agent. Returns `false` when startup fails. |
 | `close()` | Stop the agent and release it. |
 | `setKnockUser({ userId, deviceId, orgId, userData })` | Identity sent with each knock. |

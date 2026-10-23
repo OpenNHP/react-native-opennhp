@@ -82,3 +82,36 @@ export function privateKeyToPublicKey(
   privateKey: string,
   cipher?: CipherValue
 ): Promise<string>;
+
+export type RegistrationOptions = {
+  workingDirectory: string;
+  logLevel?: LogLevelValue;
+  /** Existing private key. Omit on the OTP request to generate a new key. */
+  privateKey?: string;
+  cipher?: CipherValue;
+  /** Sent as the user id and as UserData.email. The server emails the OTP here. */
+  email: string;
+  deviceId?: string;
+  orgId?: string;
+  userData?: Record<string, unknown> | string;
+  aspId: string;
+  resId: string;
+  /** server.toml [[Servers]] Name, or the public key passed to addServer. */
+  cluster: string;
+};
+
+export type RegistrationResult = {
+  errCode?: string;
+  errMsg?: string;
+  privateKey?: string;
+  publicKey?: string;
+  aspId?: string;
+  expiresAt?: number;
+  raw?: string;
+};
+
+export function requestRegistrationOtp(options: RegistrationOptions): Promise<RegistrationResult>;
+
+export function registerDevice(
+  options: RegistrationOptions & { otp: string; privateKey: string }
+): Promise<RegistrationResult>;

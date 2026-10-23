@@ -1,0 +1,459 @@
+diff --git a/endpoints/agent/iossdk/export.go b/endpoints/agent/iossdk/export.go
+index 9828e20..c38cc51 100644
+--- a/endpoints/agent/iossdk/export.go
++++ b/endpoints/agent/iossdk/export.go
+@@ -1,6 +1,5 @@
+ package iossdk
+ 
+-import "C"
+ import (
+ 	"encoding/base64"
+ 	"encoding/json"
+@@ -32,11 +31,12 @@ func NhpAgentInit(workingDir string, logLevel int) bool {
+ 		return true
+ 	}
+ 
+-	gAgentInstance = &agent.UdpAgent{}
+-	err := gAgentInstance.Start(workingDir, logLevel)
++	instance := &agent.UdpAgent{}
++	err := instance.Start(workingDir, logLevel)
+ 	if err != nil {
+ 		return false
+ 	}
++	gAgentInstance = instance
+ 
+ 	return true
+ }
+@@ -385,3 +385,201 @@ func NhpPrivkeyToPubkey(cipherType int, privateBase64 string) string {
+ 
+ 	return pub
+ }
++
++type registrationResult struct {
++	ErrCode       string `json:"errCode"`
++	ErrMsg        string `json:"errMsg,omitempty"`
++	PrivateKey    string `json:"privateKey,omitempty"`
++	PublicKey     string `json:"publicKey,omitempty"`
++	AuthServiceId string `json:"aspId,omitempty"`
++	ExpiresAt     *int64 `json:"expiresAt,omitempty"`
++}
++
++func registrationJSON(result registrationResult) string {
++	bytes, err := json.Marshal(result)
++	if err != nil {
++		return `{"errCode":"1","errMsg":"failed to encode registration result"}`
++	}
++	return string(bytes)
++}
++
++func registrationErrorCode(err error) string {
++	type coder interface{ ErrorCode() string }
++	if coded, ok := err.(coder); ok {
++		if code := coded.ErrorCode(); code != "" {
++			return code
++		}
++	}
++	return "1"
++}
++
++func cipherSchemeFor(cipherType int) int {
++	if core.EccTypeEnum(cipherType) == core.ECC_SM2 {
++		return common.CIPHER_SCHEME_GMSM
++	}
++	return common.CIPHER_SCHEME_CURVE
++}
++
++func ensureRegistrationAgent(workingDir string, logLevel int) error {
++	if gAgentInstance != nil {
++		if gAgentInstance.IsRunning() {
++			return nil
++		}
++		gAgentInstance = nil
++	}
++	if workingDir == "" {
++		return fmt.Errorf("working directory is required")
++	}
++	instance := &agent.UdpAgent{}
++	instance.SetAllowMissingConfig(true)
++	if err := instance.Start(workingDir, logLevel); err != nil {
++		return err
++	}
++	gAgentInstance = instance
++	return nil
++}
++
++func installRegistrationKey(privateKey string, cipherType int) error {
++	if privateKey != "" && gAgentInstance.PrivateKeyBase64() == privateKey {
++		return nil
++	}
++	var priv []byte
++	if privateKey == "" {
++		ecc := core.ECC_CURVE25519
++		if core.EccTypeEnum(cipherType) == core.ECC_SM2 {
++			ecc = core.ECC_SM2
++		}
++		priv = core.NewECDH(ecc).PrivateKey()
++	} else {
++		decoded, err := base64.StdEncoding.DecodeString(privateKey)
++		if err != nil {
++			return fmt.Errorf("private key is not valid base64")
++		}
++		priv = decoded
++	}
++	return gAgentInstance.ReinitWithKey(priv, cipherSchemeFor(cipherType))
++}
++
++func applyRegistrationUser(email string, deviceId string, orgId string, userData string) error {
++	data := map[string]any{}
++	if userData != "" {
++		if err := json.Unmarshal([]byte(userData), &data); err != nil {
++			return fmt.Errorf("userData is not valid JSON")
++		}
++	}
++	if email != "" {
++		data["email"] = email
++	}
++	gAgentInstance.SetDeviceId(deviceId)
++	gAgentInstance.SetKnockUser(email, orgId, data)
++	return nil
++}
++
++func registrationTarget(aspId string, resId string, cluster string) (*agent.KnockTarget, error) {
++	resource := &agent.KnockResource{
++		AuthServiceId: aspId,
++		ResourceId:    resId,
++		Cluster:       cluster,
++	}
++	sc, err := gAgentInstance.FindServerClusterFromResource(resource)
++	if err != nil {
++		return nil, err
++	}
++	if sc == nil {
++		return nil, common.ErrKnockServerNotFound
++	}
++	return &agent.KnockTarget{
++		KnockResource: *resource,
++		ServerPeer:    sc.RepresentativePeer(),
++		ServerCluster: sc,
++	}, nil
++}
++
++func prepareRegistration(workingDir string, logLevel int, privateKey string, cipherType int, email string, deviceId string, orgId string, userData string, aspId string, resId string, cluster string, generateKey bool) (registrationResult, *agent.KnockTarget) {
++	result := registrationResult{}
++	if email == "" || aspId == "" || resId == "" || cluster == "" {
++		result.ErrCode = common.ErrInvalidInput.ErrorCode()
++		result.ErrMsg = "email, aspId, resId, and cluster are required"
++		return result, nil
++	}
++	if err := ensureRegistrationAgent(workingDir, logLevel); err != nil {
++		result.ErrCode = registrationErrorCode(err)
++		result.ErrMsg = err.Error()
++		return result, nil
++	}
++	key := privateKey
++	if key == "" && !generateKey {
++		key = gAgentInstance.PrivateKeyBase64()
++	}
++	if err := installRegistrationKey(key, cipherType); err != nil {
++		result.ErrCode = registrationErrorCode(err)
++		result.ErrMsg = err.Error()
++		return result, nil
++	}
++	if err := applyRegistrationUser(email, deviceId, orgId, userData); err != nil {
++		result.ErrCode = common.ErrInvalidInput.ErrorCode()
++		result.ErrMsg = err.Error()
++		return result, nil
++	}
++	result.PrivateKey = gAgentInstance.PrivateKeyBase64()
++	result.PublicKey = gAgentInstance.PublicKeyBase64ByCipherScheme()
++	target, err := registrationTarget(aspId, resId, cluster)
++	if err != nil {
++		result.ErrCode = registrationErrorCode(err)
++		result.ErrMsg = err.Error()
++		return result, nil
++	}
++	return result, target
++}
++
++// Request a one-time password so this device key can be registered.
++// The server emails the code to email. privateKey may be empty to generate a new key.
++func NhpAgentRequestOtp(workingDir string, logLevel int, privateKey string, cipherType int, email string, deviceId string, orgId string, userData string, aspId string, resId string, cluster string) string {
++	result, target := prepareRegistration(
++		workingDir, logLevel, privateKey, cipherType, email, deviceId, orgId, userData, aspId, resId, cluster, true,
++	)
++	if target == nil {
++		return registrationJSON(result)
++	}
++	if err := gAgentInstance.RequestOtp(target); err != nil {
++		result.ErrCode = registrationErrorCode(err)
++		result.ErrMsg = err.Error()
++		return registrationJSON(result)
++	}
++	result.ErrCode = common.ErrSuccess.ErrorCode()
++	return registrationJSON(result)
++}
++
++// Register the current device public key with the one-time password from NhpAgentRequestOtp.
++// Pass the same privateKey that the OTP request returned.
++func NhpAgentRegister(workingDir string, logLevel int, privateKey string, cipherType int, email string, deviceId string, orgId string, userData string, aspId string, resId string, cluster string, otp string) string {
++	if otp == "" {
++		return registrationJSON(registrationResult{
++			ErrCode: common.ErrInvalidInput.ErrorCode(),
++			ErrMsg:  "otp is required",
++		})
++	}
++	result, target := prepareRegistration(
++		workingDir, logLevel, privateKey, cipherType, email, deviceId, orgId, userData, aspId, resId, cluster, false,
++	)
++	if target == nil {
++		return registrationJSON(result)
++	}
++	ack, err := gAgentInstance.RegisterPublicKey(otp, target)
++	if ack != nil {
++		result.ErrCode = ack.ErrCode
++		result.ErrMsg = ack.ErrMsg
++		result.AuthServiceId = ack.AuthServiceId
++		result.ExpiresAt = ack.ExpiresAt
++	}
++	if err != nil && result.ErrCode == "" {
++		result.ErrCode = registrationErrorCode(err)
++		result.ErrMsg = err.Error()
++	}
++	if result.ErrCode == "" {
++		result.ErrCode = common.ErrSuccess.ErrorCode()
++	}
++	result.PrivateKey = gAgentInstance.PrivateKeyBase64()
++	result.PublicKey = gAgentInstance.PublicKeyBase64ByCipherScheme()
++	return registrationJSON(result)
++}
+diff --git a/endpoints/agent/main/export.go b/endpoints/agent/main/export.go
+index 866b439..47ee3e6 100644
+--- a/endpoints/agent/main/export.go
++++ b/endpoints/agent/main/export.go
+@@ -53,11 +53,12 @@ func nhp_agent_init(workingDir *C.char, logLevel C.int) bool {
+ 		return true
+ 	}
+ 
+-	gAgentInstance = &agent.UdpAgent{}
+-	err := gAgentInstance.Start(deepCopyCString(workingDir), int(logLevel))
++	instance := &agent.UdpAgent{}
++	err := instance.Start(deepCopyCString(workingDir), int(logLevel))
+ 	if err != nil {
+ 		return false
+ 	}
++	gAgentInstance = instance
+ 
+ 	return true
+ }
+@@ -427,3 +428,211 @@ func nhp_privkey_to_pubkey(cipherType C.int, privateBase64 *C.char) *C.char {
+ 
+ 	return pPub
+ }
++
++type registrationResult struct {
++	ErrCode       string `json:"errCode"`
++	ErrMsg        string `json:"errMsg,omitempty"`
++	PrivateKey    string `json:"privateKey,omitempty"`
++	PublicKey     string `json:"publicKey,omitempty"`
++	AuthServiceId string `json:"aspId,omitempty"`
++	ExpiresAt     *int64 `json:"expiresAt,omitempty"`
++}
++
++func registrationJSON(result registrationResult) *C.char {
++	bytes, err := json.Marshal(result)
++	if err != nil {
++		bytes = []byte(`{"errCode":"1","errMsg":"failed to encode registration result"}`)
++	}
++	return C.CString(string(bytes))
++}
++
++func registrationErrorCode(err error) string {
++	type coder interface{ ErrorCode() string }
++	if coded, ok := err.(coder); ok {
++		if code := coded.ErrorCode(); code != "" {
++			return code
++		}
++	}
++	return "1"
++}
++
++func cipherSchemeFor(cipherType int) int {
++	if core.EccTypeEnum(cipherType) == core.ECC_SM2 {
++		return common.CIPHER_SCHEME_GMSM
++	}
++	return common.CIPHER_SCHEME_CURVE
++}
++
++func ensureRegistrationAgent(workingDir string, logLevel int) error {
++	if gAgentInstance != nil {
++		if gAgentInstance.IsRunning() {
++			return nil
++		}
++		gAgentInstance = nil
++	}
++	if workingDir == "" {
++		return fmt.Errorf("working directory is required")
++	}
++	instance := &agent.UdpAgent{}
++	instance.SetAllowMissingConfig(true)
++	if err := instance.Start(workingDir, logLevel); err != nil {
++		return err
++	}
++	gAgentInstance = instance
++	return nil
++}
++
++func installRegistrationKey(privateKey string, cipherType int) error {
++	if privateKey != "" && gAgentInstance.PrivateKeyBase64() == privateKey {
++		return nil
++	}
++	var priv []byte
++	if privateKey == "" {
++		ecc := core.ECC_CURVE25519
++		if core.EccTypeEnum(cipherType) == core.ECC_SM2 {
++			ecc = core.ECC_SM2
++		}
++		priv = core.NewECDH(ecc).PrivateKey()
++	} else {
++		decoded, err := base64.StdEncoding.DecodeString(privateKey)
++		if err != nil {
++			return fmt.Errorf("private key is not valid base64")
++		}
++		priv = decoded
++	}
++	return gAgentInstance.ReinitWithKey(priv, cipherSchemeFor(cipherType))
++}
++
++func applyRegistrationUser(email string, deviceId string, orgId string, userData string) error {
++	data := map[string]any{}
++	if userData != "" {
++		if err := json.Unmarshal([]byte(userData), &data); err != nil {
++			return fmt.Errorf("userData is not valid JSON")
++		}
++	}
++	if email != "" {
++		data["email"] = email
++	}
++	gAgentInstance.SetDeviceId(deviceId)
++	gAgentInstance.SetKnockUser(email, orgId, data)
++	return nil
++}
++
++func registrationTarget(aspId string, resId string, cluster string) (*agent.KnockTarget, error) {
++	resource := &agent.KnockResource{
++		AuthServiceId: aspId,
++		ResourceId:    resId,
++		Cluster:       cluster,
++	}
++	sc, err := gAgentInstance.FindServerClusterFromResource(resource)
++	if err != nil {
++		return nil, err
++	}
++	if sc == nil {
++		return nil, common.ErrKnockServerNotFound
++	}
++	return &agent.KnockTarget{
++		KnockResource: *resource,
++		ServerPeer:    sc.RepresentativePeer(),
++		ServerCluster: sc,
++	}, nil
++}
++
++func prepareRegistration(workingDir string, logLevel int, privateKey string, cipherType int, email string, deviceId string, orgId string, userData string, aspId string, resId string, cluster string, generateKey bool) (registrationResult, *agent.KnockTarget) {
++	result := registrationResult{}
++	if email == "" || aspId == "" || resId == "" || cluster == "" {
++		result.ErrCode = common.ErrInvalidInput.ErrorCode()
++		result.ErrMsg = "email, aspId, resId, and cluster are required"
++		return result, nil
++	}
++	if err := ensureRegistrationAgent(workingDir, logLevel); err != nil {
++		result.ErrCode = registrationErrorCode(err)
++		result.ErrMsg = err.Error()
++		return result, nil
++	}
++	key := privateKey
++	if key == "" && !generateKey {
++		key = gAgentInstance.PrivateKeyBase64()
++	}
++	if err := installRegistrationKey(key, cipherType); err != nil {
++		result.ErrCode = registrationErrorCode(err)
++		result.ErrMsg = err.Error()
++		return result, nil
++	}
++	if err := applyRegistrationUser(email, deviceId, orgId, userData); err != nil {
++		result.ErrCode = common.ErrInvalidInput.ErrorCode()
++		result.ErrMsg = err.Error()
++		return result, nil
++	}
++	result.PrivateKey = gAgentInstance.PrivateKeyBase64()
++	result.PublicKey = gAgentInstance.PublicKeyBase64ByCipherScheme()
++	target, err := registrationTarget(aspId, resId, cluster)
++	if err != nil {
++		result.ErrCode = registrationErrorCode(err)
++		result.ErrMsg = err.Error()
++		return result, nil
++	}
++	return result, target
++}
++
++// Request a one-time password so this device key can be registered.
++// The server emails the code to email. privateKey may be empty to generate a new key.
++// The caller must free the returned string with nhp_free_cstring.
++//
++//export nhp_agent_request_otp
++func nhp_agent_request_otp(workingDir *C.char, logLevel C.int, privateKey *C.char, cipherType C.int, email *C.char, deviceId *C.char, orgId *C.char, userData *C.char, aspId *C.char, resId *C.char, cluster *C.char) *C.char {
++	result, target := prepareRegistration(
++		deepCopyCString(workingDir), int(logLevel), deepCopyCString(privateKey), int(cipherType),
++		deepCopyCString(email), deepCopyCString(deviceId), deepCopyCString(orgId), deepCopyCString(userData),
++		deepCopyCString(aspId), deepCopyCString(resId), deepCopyCString(cluster), true,
++	)
++	if target == nil {
++		return registrationJSON(result)
++	}
++	if err := gAgentInstance.RequestOtp(target); err != nil {
++		result.ErrCode = registrationErrorCode(err)
++		result.ErrMsg = err.Error()
++		return registrationJSON(result)
++	}
++	result.ErrCode = common.ErrSuccess.ErrorCode()
++	return registrationJSON(result)
++}
++
++// Register the current device public key with the one-time password from nhp_agent_request_otp.
++// Pass the same privateKey that request returned. The caller must free the returned string with nhp_free_cstring.
++//
++//export nhp_agent_register
++func nhp_agent_register(workingDir *C.char, logLevel C.int, privateKey *C.char, cipherType C.int, email *C.char, deviceId *C.char, orgId *C.char, userData *C.char, aspId *C.char, resId *C.char, cluster *C.char, otp *C.char) *C.char {
++	otpCode := deepCopyCString(otp)
++	if otpCode == "" {
++		return registrationJSON(registrationResult{
++			ErrCode: common.ErrInvalidInput.ErrorCode(),
++			ErrMsg:  "otp is required",
++		})
++	}
++	result, target := prepareRegistration(
++		deepCopyCString(workingDir), int(logLevel), deepCopyCString(privateKey), int(cipherType),
++		deepCopyCString(email), deepCopyCString(deviceId), deepCopyCString(orgId), deepCopyCString(userData),
++		deepCopyCString(aspId), deepCopyCString(resId), deepCopyCString(cluster), false,
++	)
++	if target == nil {
++		return registrationJSON(result)
++	}
++	ack, err := gAgentInstance.RegisterPublicKey(otpCode, target)
++	if ack != nil {
++		result.ErrCode = ack.ErrCode
++		result.ErrMsg = ack.ErrMsg
++		result.AuthServiceId = ack.AuthServiceId
++		result.ExpiresAt = ack.ExpiresAt
++	}
++	if err != nil && result.ErrCode == "" {
++		result.ErrCode = registrationErrorCode(err)
++		result.ErrMsg = err.Error()
++	}
++	if result.ErrCode == "" {
++		result.ErrCode = common.ErrSuccess.ErrorCode()
++	}
++	result.PrivateKey = gAgentInstance.PrivateKeyBase64()
++	result.PublicKey = gAgentInstance.PublicKeyBase64ByCipherScheme()
++	return registrationJSON(result)
++}

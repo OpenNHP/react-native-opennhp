@@ -17,6 +17,8 @@ extern char *nhp_agent_knock_resource(char *aspId, char *resId, char *cluster);
 extern GoUint8 nhp_agent_exit_resource(char *aspId, char *resId, char *cluster);
 extern char *nhp_generate_keys(int cipherType);
 extern char *nhp_privkey_to_pubkey(int cipherType, char *privateBase64);
+extern char *nhp_agent_request_otp(char *workingDir, int logLevel, char *privateKey, int cipherType, char *email, char *deviceId, char *orgId, char *userData, char *aspId, char *resId, char *cluster);
+extern char *nhp_agent_register(char *workingDir, int logLevel, char *privateKey, int cipherType, char *email, char *deviceId, char *orgId, char *userData, char *aspId, char *resId, char *cluster, char *otp);
 
 static const char *lock_string(JNIEnv *env, jstring value) {
   if (value == NULL) {
@@ -172,4 +174,58 @@ JNIEXPORT jstring JNICALL Java_com_reactnativeopennhp_NhpAgent_privateKeyToPubli
   char *pub = nhp_privkey_to_pubkey(cipher, (char *)key);
   unlock_string(env, privateKey, key);
   return adopt_cstring(env, pub);
+}
+
+JNIEXPORT jstring JNICALL Java_com_reactnativeopennhp_NhpAgent_requestRegistrationOtp(
+    JNIEnv *env, jclass clazz, jstring workingDirectory, jint logLevel, jstring privateKey, jint cipher,
+    jstring email, jstring deviceId, jstring orgId, jstring userData, jstring aspId, jstring resId, jstring cluster) {
+  (void)clazz;
+  const char *dir = lock_string(env, workingDirectory);
+  const char *key = lock_string(env, privateKey);
+  const char *mail = lock_string(env, email);
+  const char *device = lock_string(env, deviceId);
+  const char *org = lock_string(env, orgId);
+  const char *data = lock_string(env, userData);
+  const char *asp = lock_string(env, aspId);
+  const char *res = lock_string(env, resId);
+  const char *name = lock_string(env, cluster);
+  char *json = nhp_agent_request_otp((char *)dir, logLevel, (char *)key, cipher, (char *)mail, (char *)device, (char *)org, (char *)data, (char *)asp, (char *)res, (char *)name);
+  unlock_string(env, workingDirectory, dir);
+  unlock_string(env, privateKey, key);
+  unlock_string(env, email, mail);
+  unlock_string(env, deviceId, device);
+  unlock_string(env, orgId, org);
+  unlock_string(env, userData, data);
+  unlock_string(env, aspId, asp);
+  unlock_string(env, resId, res);
+  unlock_string(env, cluster, name);
+  return adopt_cstring(env, json);
+}
+
+JNIEXPORT jstring JNICALL Java_com_reactnativeopennhp_NhpAgent_registerDevice(
+    JNIEnv *env, jclass clazz, jstring workingDirectory, jint logLevel, jstring privateKey, jint cipher,
+    jstring email, jstring deviceId, jstring orgId, jstring userData, jstring aspId, jstring resId, jstring cluster, jstring otp) {
+  (void)clazz;
+  const char *dir = lock_string(env, workingDirectory);
+  const char *key = lock_string(env, privateKey);
+  const char *mail = lock_string(env, email);
+  const char *device = lock_string(env, deviceId);
+  const char *org = lock_string(env, orgId);
+  const char *data = lock_string(env, userData);
+  const char *asp = lock_string(env, aspId);
+  const char *res = lock_string(env, resId);
+  const char *name = lock_string(env, cluster);
+  const char *code = lock_string(env, otp);
+  char *json = nhp_agent_register((char *)dir, logLevel, (char *)key, cipher, (char *)mail, (char *)device, (char *)org, (char *)data, (char *)asp, (char *)res, (char *)name, (char *)code);
+  unlock_string(env, workingDirectory, dir);
+  unlock_string(env, privateKey, key);
+  unlock_string(env, email, mail);
+  unlock_string(env, deviceId, device);
+  unlock_string(env, orgId, org);
+  unlock_string(env, userData, data);
+  unlock_string(env, aspId, asp);
+  unlock_string(env, resId, res);
+  unlock_string(env, cluster, name);
+  unlock_string(env, otp, code);
+  return adopt_cstring(env, json);
 }

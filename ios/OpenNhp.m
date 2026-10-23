@@ -142,4 +142,41 @@ RCT_EXPORT_METHOD(privateKeyToPublicKey : (nonnull NSNumber *)cipher
   resolve(pub ?: @"");
 }
 
+RCT_EXPORT_METHOD(requestRegistrationOtp : (NSString *)workingDirectory
+                  logLevel : (nonnull NSNumber *)logLevel
+                  privateKey : (NSString *)privateKey
+                  cipher : (nonnull NSNumber *)cipher
+                  email : (NSString *)email
+                  deviceId : (NSString *)deviceId
+                  orgId : (NSString *)orgId
+                  userData : (NSString *)userData
+                  aspId : (NSString *)aspId
+                  resId : (NSString *)resId
+                  cluster : (NSString *)cluster
+                  resolver : (RCTPromiseResolveBlock)resolve
+                  rejecter : (RCTPromiseRejectBlock)reject)
+{
+  NSString *json = IossdkNhpAgentRequestOtp(workingDirectory, logLevel.longValue, privateKey, cipher.longValue, email, deviceId, orgId, userData, aspId, resId, cluster);
+  resolve(json ?: @"");
+}
+
+RCT_EXPORT_METHOD(registerDevice : (NSString *)workingDirectory
+                  logLevel : (nonnull NSNumber *)logLevel
+                  privateKey : (NSString *)privateKey
+                  cipher : (nonnull NSNumber *)cipher
+                  email : (NSString *)email
+                  deviceId : (NSString *)deviceId
+                  orgId : (NSString *)orgId
+                  userData : (NSString *)userData
+                  aspId : (NSString *)aspId
+                  resId : (NSString *)resId
+                  cluster : (NSString *)cluster
+                  otp : (NSString *)otp
+                  resolver : (RCTPromiseResolveBlock)resolve
+                  rejecter : (RCTPromiseRejectBlock)reject)
+{
+  NSString *json = IossdkNhpAgentRegister(workingDirectory, logLevel.longValue, privateKey, cipher.longValue, email, deviceId, orgId, userData, aspId, resId, cluster, otp);
+  resolve(json ?: @"");
+}
+
 @end
