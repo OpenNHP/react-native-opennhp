@@ -78,6 +78,13 @@ Whether agent instance has been initialized successfully.
 FOUNDATION_EXPORT BOOL IossdkNhpAgentInit(NSString* _Nullable workingDir, long logLevel);
 
 /**
+ * NhpAgentInitWithKey starts the agent without reading PrivateKeyBase64 from
+etc/config.toml. privateKey is the base64 agent private key already held by
+the platform secure store. cipherType is 0 for Curve25519 and 1 for SM2.
+ */
+FOUNDATION_EXPORT BOOL IossdkNhpAgentInitWithKey(NSString* _Nullable workingDir, long logLevel, NSString* _Nullable privateKey, long cipherType);
+
+/**
  * The agent initiates a single knock on the door request to the server hosting the resource
 
 Input:

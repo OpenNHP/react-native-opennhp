@@ -4,7 +4,7 @@ typedef unsigned char GoUint8;
 typedef long long GoInt64;
 
 extern void nhp_free_cstring(char *ptr);
-extern GoUint8 nhp_agent_init(char *workingDir, int logLevel);
+extern GoUint8 nhp_agent_init_with_key(char *workingDir, int logLevel, char *privateKey, int cipherType);
 extern void nhp_agent_close(void);
 extern int nhp_agent_knockloop_start(void);
 extern void nhp_agent_knockloop_stop(void);
@@ -49,12 +49,14 @@ static jstring adopt_cstring(JNIEnv *env, char *value) {
   return result;
 }
 
-JNIEXPORT jboolean JNICALL Java_com_reactnativeopennhp_NhpAgent_initializeAgent(
-    JNIEnv *env, jclass clazz, jstring workingDirectory, jint logLevel) {
+JNIEXPORT jboolean JNICALL Java_com_reactnativeopennhp_NhpAgent_initializeAgentWithKey(
+    JNIEnv *env, jclass clazz, jstring workingDirectory, jint logLevel, jstring privateKey, jint cipher) {
   (void)clazz;
   const char *directory = lock_string(env, workingDirectory);
-  GoUint8 ok = nhp_agent_init((char *)directory, logLevel);
+  const char *key = lock_string(env, privateKey);
+  GoUint8 ok = nhp_agent_init_with_key((char *)directory, logLevel, (char *)key, cipher);
   unlock_string(env, workingDirectory, directory);
+  unlock_string(env, privateKey, key);
   return ok ? JNI_TRUE : JNI_FALSE;
 }
 

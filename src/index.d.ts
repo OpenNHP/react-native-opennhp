@@ -44,8 +44,7 @@ export type KnockAck = {
   [key: string]: unknown;
 };
 
-export type KeyPair = {
-  privateKey: string;
+export type PublicKeyResult = {
   publicKey: string;
 };
 
@@ -76,18 +75,18 @@ export function knockResource(aspId: string, resId: string, cluster: string): Pr
 
 export function exitResource(aspId: string, resId: string, cluster: string): Promise<boolean>;
 
-export function generateKeys(cipher?: CipherValue): Promise<KeyPair>;
+export function generateKeys(cipher?: CipherValue): Promise<PublicKeyResult>;
 
-export function privateKeyToPublicKey(
-  privateKey: string,
-  cipher?: CipherValue
-): Promise<string>;
+export function getPublicKey(): Promise<string>;
+
+export function importAgentKey(options: {
+  privateKey: string;
+  cipher?: CipherValue;
+}): Promise<PublicKeyResult>;
 
 export type RegistrationOptions = {
   workingDirectory: string;
   logLevel?: LogLevelValue;
-  /** Existing private key. Omit on the OTP request to generate a new key. */
-  privateKey?: string;
   cipher?: CipherValue;
   /** Sent as the user id and as UserData.email. The server emails the OTP here. */
   email: string;
@@ -103,7 +102,6 @@ export type RegistrationOptions = {
 export type RegistrationResult = {
   errCode?: string;
   errMsg?: string;
-  privateKey?: string;
   publicKey?: string;
   aspId?: string;
   expiresAt?: number;
@@ -113,5 +111,5 @@ export type RegistrationResult = {
 export function requestRegistrationOtp(options: RegistrationOptions): Promise<RegistrationResult>;
 
 export function registerDevice(
-  options: RegistrationOptions & { otp: string; privateKey: string }
+  options: RegistrationOptions & { otp: string }
 ): Promise<RegistrationResult>;

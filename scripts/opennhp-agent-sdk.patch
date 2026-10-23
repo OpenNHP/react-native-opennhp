@@ -1,15 +1,28 @@
 diff --git a/endpoints/agent/iossdk/export.go b/endpoints/agent/iossdk/export.go
-index 9828e20..c38cc51 100644
+index 9828e20..28785fb 100644
 --- a/endpoints/agent/iossdk/export.go
 +++ b/endpoints/agent/iossdk/export.go
-@@ -1,6 +1,5 @@
+@@ -1,16 +1,18 @@
  package iossdk
  
 -import "C"
  import (
  	"encoding/base64"
  	"encoding/json"
-@@ -32,11 +31,12 @@ func NhpAgentInit(workingDir string, logLevel int) bool {
+ 	"fmt"
++	"os"
++	"path/filepath"
+ 
+ 	_ "golang.org/x/mobile/bind"
+ 
+ 	"github.com/OpenNHP/opennhp/endpoints/agent"
+ 	"github.com/OpenNHP/opennhp/nhp/common"
+ 	"github.com/OpenNHP/opennhp/nhp/core"
++	"github.com/OpenNHP/opennhp/nhp/log"
+ )
+ 
+ var gAgentInstance *agent.UdpAgent
+@@ -32,15 +34,39 @@ func NhpAgentInit(workingDir string, logLevel int) bool {
  		return true
  	}
  
@@ -24,7 +37,34 @@ index 9828e20..c38cc51 100644
  
  	return true
  }
-@@ -385,3 +385,201 @@ func NhpPrivkeyToPubkey(cipherType int, privateBase64 string) string {
+ 
++// NhpAgentInitWithKey starts the agent without reading PrivateKeyBase64 from
++// etc/config.toml. privateKey is the base64 agent private key already held by
++// the platform secure store. cipherType is 0 for Curve25519 and 1 for SM2.
++func NhpAgentInitWithKey(workingDir string, logLevel int, privateKey string, cipherType int) bool {
++	if gAgentInstance != nil {
++		return true
++	}
++	if privateKey == "" {
++		return false
++	}
++	instance, err := startAllowingMissingConfig(workingDir, logLevel)
++	if err != nil {
++		return false
++	}
++	gAgentInstance = instance
++	if err := installRegistrationKey(privateKey, cipherType); err != nil {
++		instance.Stop()
++		gAgentInstance = nil
++		return false
++	}
++	return true
++}
++
+ // Synchronously stop and release nhp_
+ func NhpAgentClose() {
+ 	if gAgentInstance == nil {
+@@ -385,3 +411,221 @@ func NhpPrivkeyToPubkey(cipherType int, privateBase64 string) string {
  
  	return pub
  }
@@ -63,6 +103,30 @@ index 9828e20..c38cc51 100644
 +	return common.CIPHER_SCHEME_CURVE
 +}
 +
++func configTomlExists(workingDir string) bool {
++	_, err := os.Stat(filepath.Join(workingDir, "etc", "config.toml"))
++	return err == nil
++}
++
++// startAllowingMissingConfig starts an agent that may have no config.toml.
++// A missing file makes Start replace the requested log level with silent, so
++// the requested level is applied again in that case.
++func startAllowingMissingConfig(workingDir string, logLevel int) (*agent.UdpAgent, error) {
++	if workingDir == "" {
++		return nil, fmt.Errorf("working directory is required")
++	}
++	missingConfig := !configTomlExists(workingDir)
++	instance := &agent.UdpAgent{}
++	instance.SetAllowMissingConfig(true)
++	if err := instance.Start(workingDir, logLevel); err != nil {
++		return nil, err
++	}
++	if missingConfig {
++		log.SetLevel(logLevel)
++	}
++	return instance, nil
++}
++
 +func ensureRegistrationAgent(workingDir string, logLevel int) error {
 +	if gAgentInstance != nil {
 +		if gAgentInstance.IsRunning() {
@@ -70,12 +134,8 @@ index 9828e20..c38cc51 100644
 +		}
 +		gAgentInstance = nil
 +	}
-+	if workingDir == "" {
-+		return fmt.Errorf("working directory is required")
-+	}
-+	instance := &agent.UdpAgent{}
-+	instance.SetAllowMissingConfig(true)
-+	if err := instance.Start(workingDir, logLevel); err != nil {
++	instance, err := startAllowingMissingConfig(workingDir, logLevel)
++	if err != nil {
 +		return err
 +	}
 +	gAgentInstance = instance
@@ -227,10 +287,26 @@ index 9828e20..c38cc51 100644
 +	return registrationJSON(result)
 +}
 diff --git a/endpoints/agent/main/export.go b/endpoints/agent/main/export.go
-index 866b439..47ee3e6 100644
+index 866b439..e8a3f89 100644
 --- a/endpoints/agent/main/export.go
 +++ b/endpoints/agent/main/export.go
-@@ -53,11 +53,12 @@ func nhp_agent_init(workingDir *C.char, logLevel C.int) bool {
+@@ -9,12 +9,15 @@ import (
+ 	"encoding/base64"
+ 	"encoding/json"
+ 	"fmt"
++	"os"
++	"path/filepath"
+ 	"strings"
+ 	"unsafe"
+ 
+ 	"github.com/OpenNHP/opennhp/endpoints/agent"
+ 	"github.com/OpenNHP/opennhp/nhp/common"
+ 	"github.com/OpenNHP/opennhp/nhp/core"
++	"github.com/OpenNHP/opennhp/nhp/log"
+ )
+ 
+ var gAgentInstance *agent.UdpAgent
+@@ -53,15 +56,42 @@ func nhp_agent_init(workingDir *C.char, logLevel C.int) bool {
  		return true
  	}
  
@@ -245,7 +321,37 @@ index 866b439..47ee3e6 100644
  
  	return true
  }
-@@ -427,3 +428,211 @@ func nhp_privkey_to_pubkey(cipherType C.int, privateBase64 *C.char) *C.char {
+ 
++// nhp_agent_init_with_key starts the agent without reading PrivateKeyBase64
++// from etc/config.toml. privateKey is the base64 agent private key. cipherType
++// is 0 for Curve25519 and 1 for SM2. The caller must not log privateKey.
++//
++//export nhp_agent_init_with_key
++func nhp_agent_init_with_key(workingDir *C.char, logLevel C.int, privateKey *C.char, cipherType C.int) bool {
++	if gAgentInstance != nil {
++		return true
++	}
++	key := deepCopyCString(privateKey)
++	if key == "" {
++		return false
++	}
++	instance, err := startAllowingMissingConfig(deepCopyCString(workingDir), int(logLevel))
++	if err != nil {
++		return false
++	}
++	gAgentInstance = instance
++	if err := installRegistrationKey(key, int(cipherType)); err != nil {
++		instance.Stop()
++		gAgentInstance = nil
++		return false
++	}
++	return true
++}
++
+ // Synchronously stop and release nhp_agent.
+ //
+ //export nhp_agent_close
+@@ -427,3 +457,231 @@ func nhp_privkey_to_pubkey(cipherType C.int, privateBase64 *C.char) *C.char {
  
  	return pPub
  }
@@ -284,6 +390,30 @@ index 866b439..47ee3e6 100644
 +	return common.CIPHER_SCHEME_CURVE
 +}
 +
++func configTomlExists(workingDir string) bool {
++	_, err := os.Stat(filepath.Join(workingDir, "etc", "config.toml"))
++	return err == nil
++}
++
++// startAllowingMissingConfig starts an agent that may have no config.toml.
++// A missing file makes Start replace the requested log level with silent, so
++// the requested level is applied again in that case.
++func startAllowingMissingConfig(workingDir string, logLevel int) (*agent.UdpAgent, error) {
++	if workingDir == "" {
++		return nil, fmt.Errorf("working directory is required")
++	}
++	missingConfig := !configTomlExists(workingDir)
++	instance := &agent.UdpAgent{}
++	instance.SetAllowMissingConfig(true)
++	if err := instance.Start(workingDir, logLevel); err != nil {
++		return nil, err
++	}
++	if missingConfig {
++		log.SetLevel(logLevel)
++	}
++	return instance, nil
++}
++
 +func ensureRegistrationAgent(workingDir string, logLevel int) error {
 +	if gAgentInstance != nil {
 +		if gAgentInstance.IsRunning() {
@@ -291,12 +421,8 @@ index 866b439..47ee3e6 100644
 +		}
 +		gAgentInstance = nil
 +	}
-+	if workingDir == "" {
-+		return fmt.Errorf("working directory is required")
-+	}
-+	instance := &agent.UdpAgent{}
-+	instance.SetAllowMissingConfig(true)
-+	if err := instance.Start(workingDir, logLevel); err != nil {
++	instance, err := startAllowingMissingConfig(workingDir, logLevel)
++	if err != nil {
 +		return err
 +	}
 +	gAgentInstance = instance
@@ -457,3 +583,23 @@ index 866b439..47ee3e6 100644
 +	result.PublicKey = gAgentInstance.PublicKeyBase64ByCipherScheme()
 +	return registrationJSON(result)
 +}
+diff --git a/nhp/log/globalLog.go b/nhp/log/globalLog.go
+index 9956ede..a8af9b7 100644
+--- a/nhp/log/globalLog.go
++++ b/nhp/log/globalLog.go
+@@ -15,6 +15,15 @@ func SetGlobalLogger(l *Logger) {
+ 	glbLogger.callDepth += 1
+ }
+ 
++// SetLevel changes the process-wide logger level. Call it after the agent
++// starts when no config.toml was loaded, because a missing file otherwise
++// replaces the requested level with silent.
++func SetLevel(level int) {
++	if glbLogger != nil {
++		glbLogger.SetLogLevel(level)
++	}
++}
++
+ // must be called after SetGlobalLogger()
+ func Warning(format string, args ...any) {
+ 	glbLogger.Warning(format, args...)

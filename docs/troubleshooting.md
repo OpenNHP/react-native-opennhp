@@ -16,10 +16,9 @@ Then rebuild from Xcode or `npx react-native run-ios` / `run-android`. Expo Go c
 
 Check, in order:
 
-1. `workingDirectory/etc/config.toml` exists.
-2. `PrivateKeyBase64` is the base64 private key from `generateKeys`, and `DefaultCipherScheme` matches that key (`0` Curve25519, `1` SM2).
-3. A sealed `v1$` key has a passphrase available to the process. This package does not set `NHP_KEY_PASSPHRASE`. Use a plain base64 key on mobile.
-4. The directory is writable. `getDefaultWorkingDirectory()` is writable without extra permissions.
+1. `generateKeys`, `importAgentKey`, or `requestRegistrationOtp` has already stored an agent key. `getPublicKey()` returns an empty string when the secure store is empty.
+2. `etc/config.toml` does not contain `PrivateKeyBase64`. That file makes the call reject with `E_OPENNHP` instead of returning `false`. Delete the file.
+3. The directory is writable. `getDefaultWorkingDirectory()` is writable without extra permissions.
 
 Then read the newest file in `workingDirectory/logs`.
 

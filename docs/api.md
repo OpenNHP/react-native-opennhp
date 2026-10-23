@@ -13,9 +13,10 @@ import {
   exitResource,
   generateKeys,
   getDefaultWorkingDirectory,
+  getPublicKey,
+  importAgentKey,
   initializeAgent,
   knockResource,
-  privateKeyToPublicKey,
   removeResource,
   removeServer,
   setKnockUser,
@@ -45,13 +46,17 @@ Native methods run one at a time on a background queue. Overlapping JavaScript c
 
 ### `generateKeys(cipher = Cipher.CURVE25519)`
 
-Returns `{ privateKey, publicKey }`, both base64. Does not require `initializeAgent`.
+Creates a key pair, stores the private key in the device secure store, and returns `{ publicKey }`. Does not require `initializeAgent`. Replaces any key already in the store.
 
 `cipher` is `Cipher.CURVE25519` or `Cipher.SM2`. Any other value follows the SDK default, which is Curve25519.
 
-### `privateKeyToPublicKey(privateKey, cipher = Cipher.CURVE25519)`
+### `getPublicKey()`
 
-Returns the base64 public key. Returns an empty string when the private key is not valid for that cipher.
+Returns the base64 public key of the stored agent key. Returns an empty string when no key is stored.
+
+### `importAgentKey({ privateKey, cipher = Cipher.CURVE25519 })`
+
+Stores a private key that was created outside the app and returns `{ publicKey }`. This is the only JavaScript call that accepts a private key, and it does not return that key. Rejects when the key is not valid for `cipher`. Replaces any key already in the store.
 
 ## Lifecycle
 
@@ -61,15 +66,15 @@ iOS Documents directory, or the Android `files` directory.
 
 ### `initializeAgent(workingDirectory, logLevel = LogLevel.INFO)`
 
-Starts the agent process inside the app. Returns `true` when the agent is running. Returns `true` immediately when it is already running. Returns `false` when `etc/config.toml` is missing, the private key is missing or invalid, or startup fails. Read `workingDirectory/logs` for the SDK error.
+Starts the agent process inside the app from the key in the secure store. Returns `true` when the agent is running. Returns `true` immediately when it is already running. Returns `false` when no key is stored, the stored key is invalid, or startup fails. Read `workingDirectory/logs` for the SDK error.
 
-Rejects when `workingDirectory` is empty.
+Rejects when `workingDirectory` is empty. Rejects with `E_OPENNHP` when `etc/config.toml` contains `PrivateKeyBase64`.
 
-The `logLevel` argument uses `LogLevel` (`0` through `4`). `config.toml` `LogLevel` (`0` through `5`) replaces it after the file loads.
+The `logLevel` argument uses `LogLevel` (`0` through `4`). With no `config.toml`, that argument stays in effect.
 
 ### `close()`
 
-Stops the agent and releases it. The next `initializeAgent` starts a new session and reads config again.
+Stops the agent and releases it. The stored key remains. The next `initializeAgent` starts a new session from that key.
 
 ## Identity
 
@@ -167,13 +172,12 @@ Tells the server to drop this resource's opening. Returns `true` when the SDK re
 
 `requestRegistrationOtp` and `registerDevice` follow the `nhp-agentd register` flow: ask the server to email a one-time password, then submit that code with this device's public key.
 
-`etc/server.toml` must already name the cluster, or a previous `addServer` call must have registered that server on the running agent. `config.toml` may be missing. The agent starts with a temporary key in that case, then replaces it with the registration key.
+`etc/server.toml` must already name the cluster, or a previous `addServer` call must have registered that server on the running agent. The agent can start without `config.toml`. When the secure store is empty, the OTP request generates a key and stores it. When a key is already stored, that key is the one registered.
 
 ```ts
 type RegistrationOptions = {
   workingDirectory: string;
   logLevel?: LogLevelValue;
-  privateKey?: string;
   cipher?: CipherValue;
   email: string;
   deviceId?: string;
@@ -187,7 +191,7 @@ type RegistrationOptions = {
 
 ### `requestRegistrationOtp(options)`
 
-Sends `NHP-OTP`. `email` is the user id and `UserData.email`, which is where the server sends the code. Omit `privateKey` to generate a Curve25519 key (`cipher` selects SM2 instead).
+Sends `NHP-OTP`. `email` is the user id and `UserData.email`, which is where the server sends the code. `cipher` selects the scheme only when the secure store is empty. An existing stored key keeps its own cipher.
 
 Resolves to:
 
@@ -195,22 +199,19 @@ Resolves to:
 type RegistrationResult = {
   errCode?: string;
   errMsg?: string;
-  privateKey?: string;
   publicKey?: string;
   raw?: string;
 };
 ```
 
-`errCode` `"0"` means the OTP request was sent. Keep `privateKey`. The call does not wait for the email itself.
+`errCode` `"0"` means the OTP request was sent. The private key is stored on the device and is not part of this result. The call does not wait for the email itself.
 
-### `registerDevice({ ...options, otp, privateKey })`
+### `registerDevice({ ...options, otp })`
 
-Sends `NHP-REG` with the same identity, cluster, cipher, and `privateKey` used for the OTP request. A different private key invalidates the code.
+Sends `NHP-REG` with the stored agent key. Rejects when the secure store is empty. A relaunch between the OTP request and this call still uses the same key.
 
-On success, `errCode` is `"0"`. `expiresAt` is Unix seconds when the server limited the key lifetime, and it is omitted when the key does not expire. `aspId` echoes the auth service when the server sends it.
-
-Write `privateKey` into `etc/config.toml` with the matching `DefaultCipherScheme`. The running agent already has the key in memory, so knocks work until `close`. The next process start needs the file.
+On success, `errCode` is `"0"`. `expiresAt` is Unix seconds when the server limited the key lifetime, and it is omitted when the key does not expire. `aspId` echoes the auth service when the server sends it. The next `initializeAgent` loads the stored key. No `config.toml` write is required.
 
 ## Errors from the native bridge
 
-A native crash or a linkage failure rejects the promise with code `E_OPENNHP` on Android. iOS rejects through the React Native bridge. If `NativeModules.OpenNhp` is missing, the JavaScript call throws `react-native-opennhp is not linked` before any native work. Rebuild after install, and run `pod install` on iOS.
+A rejected call uses the code `E_OPENNHP`. That includes a missing secure-store key on `registerDevice`, a private key left in `etc/config.toml`, and a key the secure store could not save. If `NativeModules.OpenNhp` is missing, the JavaScript call throws `react-native-opennhp is not linked` before any native work. Rebuild after install, and run `pod install` on iOS.

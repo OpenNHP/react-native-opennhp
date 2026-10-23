@@ -43,7 +43,23 @@ public class OpenNhpModule extends ReactContextBaseJavaModule {
 
   @ReactMethod
   public void initializeAgent(String workingDirectory, int logLevel, Promise promise) {
-    run(promise, () -> promise.resolve(NhpAgent.initializeAgent(workingDirectory, logLevel)));
+    run(
+        promise,
+        () -> {
+          String blocked = AgentKeyStore.plaintextConfigError(workingDirectory);
+          if (blocked != null) {
+            promise.reject("E_OPENNHP", blocked);
+            return;
+          }
+          AgentKeyStore.Material key = AgentKeyStore.load(getReactApplicationContext());
+          if (key == null) {
+            promise.resolve(false);
+            return;
+          }
+          promise.resolve(
+              NhpAgent.initializeAgentWithKey(
+                  workingDirectory, logLevel, key.privateKey, key.cipher));
+        });
   }
 
   @ReactMethod
@@ -122,19 +138,54 @@ public class OpenNhpModule extends ReactContextBaseJavaModule {
 
   @ReactMethod
   public void generateKeys(int cipher, Promise promise) {
-    run(promise, () -> promise.resolve(NhpAgent.generateKeys(cipher)));
+    run(
+        promise,
+        () -> {
+          String raw = NhpAgent.generateKeys(cipher);
+          int separator = raw == null ? -1 : raw.indexOf('|');
+          if (raw == null || separator <= 0 || separator >= raw.length() - 1) {
+            promise.reject("E_OPENNHP", "OpenNHP generateKeys returned an unexpected value");
+            return;
+          }
+          AgentKeyStore.save(
+              getReactApplicationContext(), raw.substring(0, separator), cipher);
+          promise.resolve(raw.substring(separator + 1));
+        });
   }
 
   @ReactMethod
-  public void privateKeyToPublicKey(int cipher, String privateKey, Promise promise) {
-    run(promise, () -> promise.resolve(NhpAgent.privateKeyToPublicKey(cipher, privateKey)));
+  public void getPublicKey(Promise promise) {
+    run(
+        promise,
+        () -> {
+          AgentKeyStore.Material key = AgentKeyStore.load(getReactApplicationContext());
+          if (key == null) {
+            promise.resolve("");
+            return;
+          }
+          promise.resolve(NhpAgent.privateKeyToPublicKey(key.cipher, key.privateKey));
+        });
+  }
+
+  @ReactMethod
+  public void importAgentKey(String privateKey, int cipher, Promise promise) {
+    run(
+        promise,
+        () -> {
+          String publicKey = NhpAgent.privateKeyToPublicKey(cipher, privateKey);
+          if (publicKey == null || publicKey.isEmpty()) {
+            promise.reject("E_OPENNHP", "private key is not valid for this cipher");
+            return;
+          }
+          AgentKeyStore.save(getReactApplicationContext(), privateKey, cipher);
+          promise.resolve(publicKey);
+        });
   }
 
   @ReactMethod
   public void requestRegistrationOtp(
       String workingDirectory,
       int logLevel,
-      String privateKey,
       int cipher,
       String email,
       String deviceId,
@@ -146,27 +197,38 @@ public class OpenNhpModule extends ReactContextBaseJavaModule {
       Promise promise) {
     run(
         promise,
-        () ->
-            promise.resolve(
-                NhpAgent.requestRegistrationOtp(
-                    workingDirectory,
-                    logLevel,
-                    privateKey,
-                    cipher,
-                    email,
-                    deviceId,
-                    orgId,
-                    userData,
-                    aspId,
-                    resId,
-                    cluster)));
+        () -> {
+          String blocked = AgentKeyStore.plaintextConfigError(workingDirectory);
+          if (blocked != null) {
+            promise.reject("E_OPENNHP", blocked);
+            return;
+          }
+          AgentKeyStore.Material stored = AgentKeyStore.load(getReactApplicationContext());
+          String privateKey = stored == null ? "" : stored.privateKey;
+          int cipherToUse = stored == null ? cipher : stored.cipher;
+          String json =
+              NhpAgent.requestRegistrationOtp(
+                  workingDirectory,
+                  logLevel,
+                  privateKey,
+                  cipherToUse,
+                  email,
+                  deviceId,
+                  orgId,
+                  userData,
+                  aspId,
+                  resId,
+                  cluster);
+          promise.resolve(
+              AgentKeyStore.consumeRegistrationJson(
+                  getReactApplicationContext(), json, cipherToUse));
+        });
   }
 
   @ReactMethod
   public void registerDevice(
       String workingDirectory,
       int logLevel,
-      String privateKey,
       int cipher,
       String email,
       String deviceId,
@@ -179,20 +241,36 @@ public class OpenNhpModule extends ReactContextBaseJavaModule {
       Promise promise) {
     run(
         promise,
-        () ->
-            promise.resolve(
-                NhpAgent.registerDevice(
-                    workingDirectory,
-                    logLevel,
-                    privateKey,
-                    cipher,
-                    email,
-                    deviceId,
-                    orgId,
-                    userData,
-                    aspId,
-                    resId,
-                    cluster,
-                    otp)));
+        () -> {
+          String blocked = AgentKeyStore.plaintextConfigError(workingDirectory);
+          if (blocked != null) {
+            promise.reject("E_OPENNHP", blocked);
+            return;
+          }
+          AgentKeyStore.Material stored = AgentKeyStore.load(getReactApplicationContext());
+          if (stored == null) {
+            promise.reject(
+                "E_OPENNHP",
+                "No agent private key is stored. Call generateKeys, importAgentKey, or requestRegistrationOtp first.");
+            return;
+          }
+          String json =
+              NhpAgent.registerDevice(
+                  workingDirectory,
+                  logLevel,
+                  stored.privateKey,
+                  stored.cipher,
+                  email,
+                  deviceId,
+                  orgId,
+                  userData,
+                  aspId,
+                  resId,
+                  cluster,
+                  otp);
+          promise.resolve(
+              AgentKeyStore.consumeRegistrationJson(
+                  getReactApplicationContext(), json, stored.cipher));
+        });
   }
 }

@@ -60,19 +60,9 @@ Android emulators reach a server on the host machine at `10.0.2.2`, not `127.0.0
 
 ## Quick start
 
-The agent reads `workingDirectory/etc/config.toml` and writes logs to `workingDirectory/logs/`. `getDefaultWorkingDirectory()` returns the iOS Documents directory or the Android app files directory.
+The agent writes logs to `workingDirectory/logs/`. `getDefaultWorkingDirectory()` returns the iOS Documents directory or the Android app files directory. The private key never goes in a file or in JavaScript. `generateKeys` stores it in the iOS Keychain or in Android Keystore-wrapped storage, and returns only the public key.
 
-Create the config before calling `initializeAgent`. This module does not write files for you. `react-native-fs` and `expo-file-system` both work. A minimal file looks like this:
-
-```toml
-PrivateKeyBase64 = "<base64 private key>"
-DefaultCipherScheme = 0
-UserId = "user-1"
-OrganizationId = "example.org"
-LogLevel = 2
-```
-
-`DefaultCipherScheme = 0` is Curve25519. Use `1` for SM2. The key, this setting, and the nhp-server must all use the same scheme.
+`Cipher.CURVE25519` (`0`) is the default. Use `Cipher.SM2` (`1`) only when the nhp-server uses SM2. The key and the server must use the same scheme.
 
 ```js
 import {
@@ -89,7 +79,7 @@ import {
 
 const workingDirectory = getDefaultWorkingDirectory();
 const keys = await generateKeys(Cipher.CURVE25519);
-// Write keys.privateKey into etc/config.toml, then:
+// Give keys.publicKey to the auth service. The private key stays on the device.
 
 const ready = await initializeAgent(workingDirectory, LogLevel.INFO);
 if (!ready) {
@@ -126,21 +116,22 @@ A knock is accepted only after the auth service knows this device's public key. 
 
 ### Add the public key by hand
 
-Generate a key pair, store the private key in `etc/config.toml`, and give the public key to whoever administers the auth service. They add it as a trusted device for that user. No email step is involved. The app can knock once that key is recognized.
+`generateKeys` creates the key in the device secure store and returns `publicKey`. Give that public key to whoever administers the auth service. They add it as a trusted device for that user. No email step is involved. The app can knock once that key is recognized.
 
 ```js
 import { Cipher, generateKeys } from "react-native-opennhp";
 
 const keys = await generateKeys(Cipher.CURVE25519);
-// Save keys.privateKey in etc/config.toml.
 // Register keys.publicKey with the auth service by hand.
 ```
 
+A key created outside the app can be installed once with `importAgentKey({ privateKey, cipher })`. That call stores the key and returns `publicKey`. It does not return the private key.
+
 ### Register with a one-time password
 
-The app can enroll itself. `requestRegistrationOtp` asks the server to email a code, then `registerDevice` submits that code with this device's public key. The server needs SMTP for that mail.
+The app can enroll itself. `requestRegistrationOtp` asks the server to email a code, then `registerDevice` submits that code with the public key already in the secure store. The server needs SMTP for that mail.
 
-Put `etc/server.toml` in the working directory first so the agent can find the nhp-server. `config.toml` can be absent for these two calls. On a server installed with the OpenNHP installer, a debug configuration also writes the one-time password to the server logs. Use that log line when mail is not being delivered.
+Put `etc/server.toml` in the working directory first so the agent can find the nhp-server. On a server installed with the OpenNHP installer, a debug configuration also writes the one-time password to the server logs. Use that log line when mail is not being delivered.
 
 The published OpenNHP iOS and Android SDKs do not export this flow. These two methods are provided by this module.
 
@@ -168,12 +159,11 @@ const registered = await registerDevice({
   aspId: "example",
   resId: "demo",
   cluster: "production",
-  privateKey: pending.privateKey,
   otp: codeFromEmail,
 });
 ```
 
-Save `registered.privateKey` into `etc/config.toml` before the next cold start. These calls do not write that file. `registered.errCode === "0"` means the server accepted the public key. `expiresAt` is a Unix timestamp when the server set a key lifetime.
+`registered.errCode === "0"` means the server accepted the public key. The private key is already in the secure store, so the next launch only needs `initializeAgent`. `expiresAt` is a Unix timestamp when the server set a key lifetime. `close()` does not delete the stored key.
 
 ## Configuration
 
@@ -182,16 +172,17 @@ Layout the SDK expects:
 ```text
 <workingDirectory>/
   etc/
-    config.toml      required
     server.toml      optional if you call addServer
     resource.toml    optional; startKnockLoop knocks these resources
     dhp.toml         optional
   logs/              created by the SDK
 ```
 
-`example/etc` contains the OpenNHP docker demo files. Those files use a published demo key and the docker addresses `177.7.0.9` and `177.7.0.14`. Replace them before pointing an app at a real server.
+Do not write `etc/config.toml`. The agent private key lives in the iOS Keychain, or in ciphertext wrapped by an Android Keystore AES key. The account name is `org.opennhp.agent` / `agent-private-key`. If an older `config.toml` still contains `PrivateKeyBase64`, `initializeAgent` rejects it until that file is deleted.
 
-Full field reference, cipher schemes, sealed keys, and the knock loop: [docs/configuration.md](docs/configuration.md).
+`example/etc` contains the OpenNHP docker demo files, including a sample `config.toml` this module does not read. Those files use a published demo key and the docker addresses `177.7.0.9` and `177.7.0.14`. Replace the server addresses before pointing an app at a real server.
+
+Full field reference and the knock loop: [docs/configuration.md](docs/configuration.md).
 
 ## API
 
@@ -200,11 +191,12 @@ Every method except `getDefaultWorkingDirectory()` returns a promise. Native cal
 | Method | What it does |
 | --- | --- |
 | `getDefaultWorkingDirectory()` | App directory to use as `workingDirectory`. |
-| `generateKeys(cipher)` | New key pair. `Cipher.CURVE25519` (`0`) or `Cipher.SM2` (`1`). |
-| `privateKeyToPublicKey(privateKey, cipher)` | Public key for an existing private key. |
-| `requestRegistrationOtp(options)` | Email a one-time password and return the device key pair. |
-| `registerDevice(options)` | Register that public key with the one-time password. |
-| `initializeAgent(dir, logLevel)` | Start the agent. Returns `false` when startup fails. |
+| `generateKeys(cipher)` | Create a key in the secure store. Resolves `{ publicKey }`. `Cipher.CURVE25519` (`0`) or `Cipher.SM2` (`1`). |
+| `getPublicKey()` | Public key of the stored agent key, or an empty string when none is stored. |
+| `importAgentKey({ privateKey, cipher })` | Store a key created outside the app. Resolves `{ publicKey }`. |
+| `requestRegistrationOtp(options)` | Email a one-time password for the stored key, or generate and store one. |
+| `registerDevice(options)` | Register the stored public key with the one-time password. |
+| `initializeAgent(dir, logLevel)` | Start the agent from the stored key. Returns `false` when no key is stored or startup fails. |
 | `close()` | Stop the agent and release it. |
 | `setKnockUser({ userId, deviceId, orgId, userData })` | Identity sent with each knock. |
 | `addServer({ pubkey, ip, host, port, expire })` | Register one nhp-server. Port `0` uses `62206`. Expire `0` does not expire. |
@@ -216,7 +208,7 @@ Every method except `getDefaultWorkingDirectory()` returns a promise. Native cal
 | `startKnockLoop()` | Knock every resource in `resource.toml`. Returns the resource count, or `-1` when the agent is not started. |
 | `stopKnockLoop()` | Stop the background knock loop. |
 
-`LogLevel` for `initializeAgent` is `0` silent, `1` error, `2` info, `3` debug, `4` verbose. After startup, `LogLevel` inside `config.toml` replaces it. That file uses a wider scale: `0` silent through `5` trace.
+`LogLevel` for `initializeAgent` is `0` silent, `1` error, `2` info, `3` debug, `4` verbose. That argument is the log level when `config.toml` is absent.
 
 Argument and response details: [docs/api.md](docs/api.md).
 
@@ -232,10 +224,10 @@ Use a release tag as the pin when you want a numbered OpenNHP contract and relea
 
 - [ ] Build from the latest OpenNHP release instead of the pinned commit `3c78548`.
 - [ ] Move the iOS and Android SDKs into their own repository and include that repository here, so SDK releases and this React Native module can be updated separately.
-- [ ]  Design native Keystore for IOS and Android. Android does not allow for raw Curve so we need a way to store the privateKey that works. IOS will accept the key as is in Keystore.
-- [ ] PrivateKey is leaked during the bridge from native to JS. We can parse in native and store securely, and then only pass the publicKey. This also happens when generating keys and needs patched as well.
-- [ ] Currently, the module uses storage based on documention for the example. The module needs to be consistant and presitant with secure storage. Use key for storage to access secure storage. I suggest opennhp.device but this may need to be more relavent to termanology of the OpenNHP project to prevent termanology drift acrossed porjects.
-- [ ] Update the docs so that it reflects the secure storage change and remove config.toml since it will no longer be used. 
+- [x] Store the agent private key in the iOS Keychain, and on Android encrypt it with an Android Keystore AES key. A raw Curve25519 or SM2 key cannot live in the Android Keystore itself.
+- [x] Keep the private key out of JavaScript. `generateKeys`, registration, and startup return or use only the public key.
+- [x] Persist one agent key at `org.opennhp.agent` / `agent-private-key`. `deviceId` stays the knock identity, so the store name does not reuse it.
+- [x] Document secure storage and stop telling apps to write the private key into `config.toml`. 
 
 ## More documentation
 

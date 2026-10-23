@@ -16,7 +16,7 @@ To move the pin, set `COMMIT` in `scripts/build-sdks.sh` to a full commit SHA or
 
 1. Clones `https://github.com/OpenNHP/opennhp` into `third_party/opennhp` if needed.
 2. Checks out `COMMIT`.
-3. Applies `scripts/opennhp-agent-sdk.patch`. That patch removes an unused `import "C"` so `gomobile` can compile the iOS package, and it adds the device-registration exports (`requestRegistrationOtp` / `registerDevice`).
+3. Applies `scripts/opennhp-agent-sdk.patch`. That patch removes an unused `import "C"` so `gomobile` can compile the iOS package, adds the device-registration exports (`requestRegistrationOtp` / `registerDevice`), and adds `NhpAgentInitWithKey` so the agent can start from a key held by the platform secure store instead of `config.toml`.
 4. Selects `golang.org/x/mobile` at `v0.0.0-20261011034528-197770444867`. The revision shipped in the OpenNHP module file is too old for current `gomobile`.
 5. Builds `libnhpagent.so` for `arm64-v8a`, `armeabi-v7a`, `x86`, and `x86_64` with the Android NDK (API 21 clang).
 6. Builds `nhpagent.xcframework` with `gomobile bind -target ios -iosversion=15.1`.

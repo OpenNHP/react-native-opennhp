@@ -8,7 +8,8 @@ public final class NhpAgent {
 
   private NhpAgent() {}
 
-  public static native boolean initializeAgent(String workingDirectory, int logLevel);
+  public static native boolean initializeAgentWithKey(
+      String workingDirectory, int logLevel, String privateKey, int cipher);
 
   public static native void close();
 

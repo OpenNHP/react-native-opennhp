@@ -45,9 +45,7 @@ function userDataString(userData) {
 
 function initializeAgent(workingDirectory, logLevel = LogLevel.INFO) {
   if (typeof workingDirectory !== "string" || workingDirectory.length === 0) {
-    return Promise.reject(
-      new Error("workingDirectory must be a writable path containing etc/config.toml")
-    );
+    return Promise.reject(new Error("workingDirectory must be a writable path"));
   }
   return getNative().initializeAgent(workingDirectory, logLevel | 0);
 }
@@ -119,30 +117,44 @@ function exitResource(aspId, resId, cluster) {
 }
 
 function generateKeys(cipher = Cipher.CURVE25519) {
-  return getNative().generateKeys(cipher | 0).then((raw) => {
-    const separator = raw.indexOf("|");
-    if (separator <= 0 || separator === raw.length - 1) {
-      throw new Error("OpenNHP generateKeys returned an unexpected value");
+  return getNative().generateKeys(cipher | 0).then((publicKey) => {
+    if (typeof publicKey !== "string" || publicKey.length === 0 || publicKey.includes("|")) {
+      throw new Error("OpenNHP generateKeys did not return a public key");
     }
-    return {
-      privateKey: raw.slice(0, separator),
-      publicKey: raw.slice(separator + 1),
-    };
+    return { publicKey };
   });
 }
 
-function privateKeyToPublicKey(privateKey, cipher = Cipher.CURVE25519) {
-  return getNative().privateKeyToPublicKey(cipher | 0, asString(privateKey));
+function getPublicKey() {
+  return getNative().getPublicKey();
+}
+
+function importAgentKey(options = {}) {
+  if (asString(options.privateKey).length === 0) {
+    return Promise.reject(new Error("importAgentKey requires a privateKey"));
+  }
+  const cipher = options.cipher == null ? Cipher.CURVE25519 : options.cipher | 0;
+  return getNative()
+    .importAgentKey(asString(options.privateKey), cipher)
+    .then((publicKey) => {
+      if (typeof publicKey !== "string" || publicKey.length === 0) {
+        throw new Error("OpenNHP importAgentKey did not return a public key");
+      }
+      return { publicKey };
+    });
 }
 
 function parseSdkJson(json, fallbackMessage) {
   try {
-    return JSON.parse(json);
+    const parsed = JSON.parse(json);
+    if (parsed && typeof parsed === "object") {
+      delete parsed.privateKey;
+    }
+    return parsed;
   } catch (error) {
     return {
       errCode: "-1",
       errMsg: fallbackMessage,
-      raw: json,
     };
   }
 }
@@ -151,7 +163,6 @@ function registrationFields(options = {}) {
   return [
     asString(options.workingDirectory),
     options.logLevel == null ? LogLevel.INFO : options.logLevel | 0,
-    asString(options.privateKey),
     options.cipher == null ? Cipher.CURVE25519 : options.cipher | 0,
     asString(options.email),
     asString(options.deviceId),
@@ -175,9 +186,6 @@ function requestRegistrationOtp(options = {}) {
 function registerDevice(options = {}) {
   if (!options || asString(options.otp).length === 0) {
     return Promise.reject(new Error("registerDevice requires the one-time password"));
-  }
-  if (asString(options.privateKey).length === 0) {
-    return Promise.reject(new Error("registerDevice requires the privateKey returned by requestRegistrationOtp"));
   }
   return getNative()
     .registerDevice(...registrationFields(options), asString(options.otp))
@@ -209,7 +217,8 @@ module.exports = {
   knockResource,
   exitResource,
   generateKeys,
-  privateKeyToPublicKey,
+  getPublicKey,
+  importAgentKey,
   requestRegistrationOtp,
   registerDevice,
 };

@@ -16,36 +16,20 @@ Create `etc` inside that directory before startup. The SDK creates `logs` itself
 
 ## 2. Create an agent key
 
-`generateKeys` does not require `initializeAgent`.
+`generateKeys` does not require `initializeAgent`. It stores the private key in the iOS Keychain or in Android Keystore-wrapped storage and returns only the public key.
 
 ```js
 import { Cipher, generateKeys } from "react-native-opennhp";
 
 const keys = await generateKeys(Cipher.CURVE25519);
-// keys.privateKey and keys.publicKey are base64
+// keys.publicKey is base64. The private key stays on the device.
 ```
 
 Use `Cipher.SM2` only when the nhp-server is configured for SM2. Curve25519 and SM2 keys are not interchangeable.
 
-Keep the private key in app storage. The sample `example/etc/config.toml` key is the public OpenNHP docker demo key. Generate a new key for any app you ship.
+The sample `example/etc/config.toml` key is the public OpenNHP docker demo key. This module does not read that file. Generate a new key for any app you ship. If you already have a private key, `importAgentKey({ privateKey, cipher })` stores it once and returns `{ publicKey }`.
 
-## 3. Write config.toml
-
-Write this file to `workingDirectory/etc/config.toml` with your own file helper (`expo-file-system`, `react-native-fs`, or a native file API):
-
-```toml
-PrivateKeyBase64 = "PASTE_PRIVATE_KEY"
-DefaultCipherScheme = 0
-UserId = "user-1"
-OrganizationId = "example.org"
-LogLevel = 2
-```
-
-`DefaultCipherScheme` must match the key and the server: `0` Curve25519, `1` SM2.
-
-`initializeAgent` returns `false` when this file is missing, the private key is empty, or the key cannot be parsed. The reason is in `workingDirectory/logs`.
-
-## 4. Start the agent and identify the user
+## 3. Start the agent and identify the user
 
 ```js
 import { LogLevel, initializeAgent, setKnockUser } from "react-native-opennhp";
@@ -63,9 +47,11 @@ await setKnockUser({
 });
 ```
 
-Startup takes about one second. `userData` is sent with knock messages. Pass an object or a JSON string.
+Startup takes about one second. `initializeAgent` returns `false` when no agent key is stored yet. It rejects when `etc/config.toml` still contains `PrivateKeyBase64`; delete that file. The reason for other startup failures is in `workingDirectory/logs`.
 
-## 5. Register the server and knock
+`userData` is sent with knock messages. Pass an object or a JSON string. Identity is not read from `config.toml`.
+
+## 4. Register the server and knock
 
 ```js
 import { addServer, knockResource } from "react-native-opennhp";
@@ -88,7 +74,7 @@ A successful ack has `errCode` equal to the string `"0"`. `resHost` lists the ho
 
 ## Register this device
 
-Use this when the server must enroll the device key before it will accept knocks. Copy `server.toml` into `etc` first. `config.toml` can wait until registration returns a private key.
+Use this when the server must enroll the device key before it will accept knocks. Copy `server.toml` into `etc` first. An empty secure store makes `requestRegistrationOtp` generate a key and store it. A key already stored by `generateKeys` is the one that gets registered.
 
 ```js
 import { requestRegistrationOtp, registerDevice } from "react-native-opennhp";
@@ -109,14 +95,13 @@ const registered = await registerDevice({
   aspId: "example",
   resId: "demo",
   cluster: "production",
-  privateKey: pending.privateKey,
   otp: "123456",
 });
 ```
 
-`pending.errCode` and `registered.errCode` are `"0"` on success. Write `registered.privateKey` into `etc/config.toml` for the next launch. Field details are in [the API page](api.md).
+`pending.errCode` and `registered.errCode` are `"0"` on success. The private key stays in the secure store for the next launch. Field details are in [the API page](api.md).
 
-## 6. Stop
+## 5. Stop
 
 ```js
 import { close } from "react-native-opennhp";
@@ -124,7 +109,7 @@ import { close } from "react-native-opennhp";
 await close();
 ```
 
-Call `close` when the user signs out or the app is finished with access. Call `exitResource(aspId, resId, cluster)` first when you want the server to drop the opening before it expires on its own.
+Call `close` when the user signs out or the app is finished with access. `close` stops the agent and leaves the stored key in place. Call `exitResource(aspId, resId, cluster)` first when you want the server to drop the opening before it expires on its own.
 
 ## Knock loop
 
