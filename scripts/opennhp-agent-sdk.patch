@@ -1,5 +1,5 @@
 diff --git a/endpoints/agent/iossdk/export.go b/endpoints/agent/iossdk/export.go
-index 9828e20..26f4c31 100644
+index 9a63936..26f4c31 100644
 --- a/endpoints/agent/iossdk/export.go
 +++ b/endpoints/agent/iossdk/export.go
 @@ -1,6 +1,5 @@
@@ -9,19 +9,7 @@ index 9828e20..26f4c31 100644
  import (
  	"encoding/base64"
  	"encoding/json"
-@@ -32,15 +31,39 @@ func NhpAgentInit(workingDir string, logLevel int) bool {
- 		return true
- 	}
- 
--	gAgentInstance = &agent.UdpAgent{}
--	err := gAgentInstance.Start(workingDir, logLevel)
-+	instance := &agent.UdpAgent{}
-+	err := instance.Start(workingDir, logLevel)
- 	if err != nil {
- 		return false
- 	}
-+	gAgentInstance = instance
- 
+@@ -42,6 +41,29 @@ func NhpAgentInit(workingDir string, logLevel int) bool {
  	return true
  }
  
@@ -51,7 +39,7 @@ index 9828e20..26f4c31 100644
  // Synchronously stop and release nhp_
  func NhpAgentClose() {
  	if gAgentInstance == nil {
-@@ -385,3 +408,27 @@ func NhpPrivkeyToPubkey(cipherType int, privateBase64 string) string {
+@@ -386,3 +408,27 @@ func NhpPrivkeyToPubkey(cipherType int, privateBase64 string) string {
  
  	return pub
  }
@@ -80,22 +68,10 @@ index 9828e20..26f4c31 100644
 +	return result.JSON()
 +}
 diff --git a/endpoints/agent/main/export.go b/endpoints/agent/main/export.go
-index 866b439..dd7832a 100644
+index 64aa440..dd7832a 100644
 --- a/endpoints/agent/main/export.go
 +++ b/endpoints/agent/main/export.go
-@@ -53,15 +53,42 @@ func nhp_agent_init(workingDir *C.char, logLevel C.int) bool {
- 		return true
- 	}
- 
--	gAgentInstance = &agent.UdpAgent{}
--	err := gAgentInstance.Start(deepCopyCString(workingDir), int(logLevel))
-+	instance := &agent.UdpAgent{}
-+	err := instance.Start(deepCopyCString(workingDir), int(logLevel))
- 	if err != nil {
- 		return false
- 	}
-+	gAgentInstance = instance
- 
+@@ -63,6 +63,32 @@ func nhp_agent_init(workingDir *C.char, logLevel C.int) bool {
  	return true
  }
  
@@ -128,7 +104,7 @@ index 866b439..dd7832a 100644
  // Synchronously stop and release nhp_agent.
  //
  //export nhp_agent_close
-@@ -427,3 +454,40 @@ func nhp_privkey_to_pubkey(cipherType C.int, privateBase64 *C.char) *C.char {
+@@ -428,3 +454,40 @@ func nhp_privkey_to_pubkey(cipherType C.int, privateBase64 *C.char) *C.char {
  
  	return pPub
  }

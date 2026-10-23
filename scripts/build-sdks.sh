@@ -17,6 +17,7 @@ fi
 
 git -C "$SRC" fetch --depth 1 origin tag "$RELEASE"
 git -C "$SRC" checkout -f "$RELEASE"
+git -C "$SRC" apply "$ROOT/scripts/opennhp-agent-init-fix.patch"
 git -C "$SRC" apply "$ROOT/scripts/opennhp-agent-sdk.patch"
 
 (

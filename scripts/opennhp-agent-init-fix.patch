@@ -1,0 +1,38 @@
+diff --git a/endpoints/agent/iossdk/export.go b/endpoints/agent/iossdk/export.go
+index 9828e20..9a63936 100644
+--- a/endpoints/agent/iossdk/export.go
++++ b/endpoints/agent/iossdk/export.go
+@@ -32,11 +32,12 @@ func NhpAgentInit(workingDir string, logLevel int) bool {
+ 		return true
+ 	}
+ 
+-	gAgentInstance = &agent.UdpAgent{}
+-	err := gAgentInstance.Start(workingDir, logLevel)
++	instance := &agent.UdpAgent{}
++	err := instance.Start(workingDir, logLevel)
+ 	if err != nil {
+ 		return false
+ 	}
++	gAgentInstance = instance
+ 
+ 	return true
+ }
+diff --git a/endpoints/agent/main/export.go b/endpoints/agent/main/export.go
+index 866b439..64aa440 100644
+--- a/endpoints/agent/main/export.go
++++ b/endpoints/agent/main/export.go
+@@ -53,11 +53,12 @@ func nhp_agent_init(workingDir *C.char, logLevel C.int) bool {
+ 		return true
+ 	}
+ 
+-	gAgentInstance = &agent.UdpAgent{}
+-	err := gAgentInstance.Start(deepCopyCString(workingDir), int(logLevel))
++	instance := &agent.UdpAgent{}
++	err := instance.Start(deepCopyCString(workingDir), int(logLevel))
+ 	if err != nil {
+ 		return false
+ 	}
++	gAgentInstance = instance
+ 
+ 	return true
+ }
