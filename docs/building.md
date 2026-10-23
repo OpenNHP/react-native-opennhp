@@ -1,22 +1,20 @@
 # Rebuild the native SDK
 
-The iOS xcframework and Android `.so` files are already in the repository. Rebuild only when you want a different OpenNHP commit.
+The iOS xcframework and Android `.so` files are already in the repository. Rebuild when OpenNHP publishes a release you want to ship.
 
-## Pin a commit
+## Pin a release
 
-`scripts/build-sdks.sh` checks out one commit and compiles it. The published module should keep that pin. Building whatever `main` happens to be today makes each release unreproducible.
+`scripts/build-sdks.sh` checks out one release tag and compiles it. The pin is that tag, not a commit on `main`. Building whatever `main` happens to be today makes each release unreproducible.
 
-Current pin: `3c78548d30eead779cb17dd9c37072d9e2e6be5d` (`main`, 2026-10-21).
+Current pin: [v1.0.2](https://github.com/OpenNHP/opennhp/releases/tag/v1.0.2) (`1f1daad0a02e`, 2026-09-11). This is the latest OpenNHP release.
 
-The latest GitHub release when these binaries were built was [v1.0.2](https://github.com/OpenNHP/opennhp/releases/tag/v1.0.2) (`1f1daad0a02e`, 2026-09-11). This pin is 325 commits newer than that tag and includes later agent changes. A release tag is the better pin when the module should follow a numbered OpenNHP release. This main snapshot is the better pin when those later agent fixes should stay.
-
-To move the pin, set `COMMIT` in `scripts/build-sdks.sh` to a full commit SHA or to a tag such as `v1.0.2`, run the script, and update `OPENNHP_REVISION`.
+To move the pin, set `RELEASE` in `scripts/build-sdks.sh` to the new tag, run the script, and update `OPENNHP_REVISION`.
 
 ## What the script does
 
 1. Clones `https://github.com/OpenNHP/opennhp` into `third_party/opennhp` if needed.
-2. Checks out `COMMIT`.
-3. Applies `scripts/opennhp-agent-sdk.patch`. That patch removes an unused `import "C"` so `gomobile` can compile the iOS package, adds the device-registration exports (`requestRegistrationOtp` / `registerDevice`), and adds `NhpAgentInitWithKey` so the agent can start from a key held by the platform secure store instead of `config.toml`.
+2. Checks out `RELEASE`.
+3. Applies `scripts/opennhp-agent-sdk.patch`. That patch removes an unused `import "C"` so `gomobile` can compile the iOS package. Registration lives once in `endpoints/agent/sdk_register.go`. The iOS and Android export files are thin wrappers around it. The patch also adds `NhpAgentInitWithKey` so the agent can start from a key held by the platform secure store instead of `config.toml`.
 4. Selects `golang.org/x/mobile` at `v0.0.0-20261011034528-197770444867`. The revision shipped in the OpenNHP module file is too old for current `gomobile`.
 5. Builds `libnhpagent.so` for `arm64-v8a`, `armeabi-v7a`, `x86`, and `x86_64` with the Android NDK (API 21 clang).
 6. Builds `nhpagent.xcframework` with `gomobile bind -target ios -iosversion=15.1`.

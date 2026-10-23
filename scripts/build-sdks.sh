@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-COMMIT="3c78548d30eead779cb17dd9c37072d9e2e6be5d"
+RELEASE="v1.0.2"
 SRC="$ROOT/third_party/opennhp"
 ENDPOINTS="$SRC/endpoints"
 OUT="$ROOT/build/sdks"
@@ -15,8 +15,8 @@ if [ ! -d "$SRC/.git" ]; then
   git clone https://github.com/OpenNHP/opennhp.git "$SRC"
 fi
 
-git -C "$SRC" fetch --depth 1 origin "$COMMIT"
-git -C "$SRC" checkout -f "$COMMIT"
+git -C "$SRC" fetch --depth 1 origin tag "$RELEASE"
+git -C "$SRC" checkout -f "$RELEASE"
 git -C "$SRC" apply "$ROOT/scripts/opennhp-agent-sdk.patch"
 
 (
