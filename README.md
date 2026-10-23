@@ -232,6 +232,10 @@ Use a release tag as the pin when you want a numbered OpenNHP contract and relea
 
 - [ ] Build from the latest OpenNHP release instead of the pinned commit `3c78548`.
 - [ ] Move the iOS and Android SDKs into their own repository and include that repository here, so SDK releases and this React Native module can be updated separately.
+- [ ]  Design native Keystore for IOS and Android. Android does not allow for raw Curve so we need a way to store the privateKey that works. IOS will accept the key as is in Keystore.
+- [ ] PrivateKey is leaked during the bridge from native to JS. We can parse in native and store securely, and then only pass the publicKey. This also happens when generating keys and needs patched as well.
+- [ ] Currently, the module uses storage based on documention for the example. The module needs to be consistant and presitant with secure storage. Use key for storage to access secure storage. I suggest opennhp.device but this may need to be more relavent to termanology of the OpenNHP project to prevent termanology drift acrossed porjects.
+- [ ] Update the docs so that it reflects the secure storage change and remove config.toml since it will no longer be used. 
 
 ## More documentation
 
