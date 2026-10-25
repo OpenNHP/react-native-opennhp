@@ -1,5 +1,8 @@
 # react-native-opennhp
 
+> [!WARNING]
+> This repository is in active development and is not for production use. Active security concerns still need to be addressed.
+
 React Native module for the [OpenNHP](https://github.com/OpenNHP/opennhp) client agent. It embeds the OpenNHP iOS and Android agent SDK so an app can knock on an nhp-server and open short-lived, zero-trust access to a protected resource.
 
 The native libraries are already compiled. Install the package, add an agent config, and call the JavaScript API. You do not need Go, Xcode command-line builds, or the Android NDK unless you want to rebuild the SDK yourself.
