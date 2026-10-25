@@ -242,15 +242,6 @@ The binaries in this repository are built from `main` commit [`9c4ff38`](https:/
 - Ship prebuilt libraries for iOS 15.1+ and Android ABIs `arm64-v8a`, `armeabi-v7a`, `x86`, and `x86_64`.
 - Knock, run the knock loop, add and remove servers and resources, and generate keys from JavaScript.
 
-## To do
-
-- [ ] Return to building from a tagged OpenNHP release once a release includes the agent-init fix (PR #1806) and the registration flow is upstreamed. The build currently tracks `main` for those changes.
-- [ ] Move the iOS and Android SDKs into their own repository and include that repository here, so SDK releases and this React Native module can be updated separately.
-- [x] Store the agent private key in the iOS Keychain, and on Android encrypt it with an Android Keystore AES key. A raw Curve25519 or SM2 key cannot live in the Android Keystore itself.
-- [x] Keep the private key out of JavaScript. `generateKeys`, registration, and startup return or use only the public key.
-- [x] Persist one agent key at `org.opennhp.agent` / `agent-private-key`. `deviceId` stays the knock identity, so the store name does not reuse it.
-- [x] Document secure storage and stop telling apps to write the private key into `config.toml`. 
-
 ## More documentation
 
 - [Getting started](docs/getting-started.md)
