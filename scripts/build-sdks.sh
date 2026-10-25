@@ -2,7 +2,11 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-RELEASE="v1.0.2"
+# Build the SDKs from the OpenNHP main branch. The agent-init fix (OpenNHP
+# PR #1806) is merged there, so only the SDK device-registration patch is still
+# applied below. Override to pin a build to a tag, branch, or commit:
+#   OPENNHP_REF=v1.0.3 ./scripts/build-sdks.sh
+REF="${OPENNHP_REF:-main}"
 SRC="$ROOT/third_party/opennhp"
 ENDPOINTS="$SRC/endpoints"
 OUT="$ROOT/build/sdks"
@@ -15,10 +19,13 @@ if [ ! -d "$SRC/.git" ]; then
   git clone https://github.com/OpenNHP/opennhp.git "$SRC"
 fi
 
-git -C "$SRC" fetch --depth 1 origin tag "$RELEASE"
-git -C "$SRC" checkout -f "$RELEASE"
-git -C "$SRC" apply "$ROOT/scripts/opennhp-agent-init-fix.patch"
+git -C "$SRC" fetch --depth 1 origin "$REF"
+git -C "$SRC" checkout -f FETCH_HEAD
+# Start from a pristine tree so a re-run does not trip over the previous apply:
+# the SDK patch adds a new untracked file (endpoints/agent/sdk_register.go).
+git -C "$SRC" clean -fd endpoints/agent
 git -C "$SRC" apply "$ROOT/scripts/opennhp-agent-sdk.patch"
+echo "OpenNHP source at $(git -C "$SRC" rev-parse HEAD) (ref $REF)"
 
 (
   cd "$ENDPOINTS"

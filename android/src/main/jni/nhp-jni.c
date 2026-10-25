@@ -19,6 +19,7 @@ extern char *nhp_generate_keys(int cipherType);
 extern char *nhp_privkey_to_pubkey(int cipherType, char *privateBase64);
 extern char *nhp_agent_request_otp(char *workingDir, int logLevel, char *privateKey, int cipherType, char *email, char *deviceId, char *orgId, char *userData, char *aspId, char *resId, char *cluster);
 extern char *nhp_agent_register(char *workingDir, int logLevel, char *privateKey, int cipherType, char *email, char *deviceId, char *orgId, char *userData, char *aspId, char *resId, char *cluster, char *otp);
+extern char *nhp_agent_take_generated_key(void);
 
 static const char *lock_string(JNIEnv *env, jstring value) {
   if (value == NULL) {
@@ -230,4 +231,10 @@ JNIEXPORT jstring JNICALL Java_com_reactnativeopennhp_NhpAgent_registerDevice(
   unlock_string(env, cluster, name);
   unlock_string(env, otp, code);
   return adopt_cstring(env, json);
+}
+
+JNIEXPORT jstring JNICALL Java_com_reactnativeopennhp_NhpAgent_takeGeneratedKey(
+    JNIEnv *env, jclass clazz) {
+  (void)clazz;
+  return adopt_cstring(env, nhp_agent_take_generated_key());
 }

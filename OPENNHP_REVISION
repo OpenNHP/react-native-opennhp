@@ -1,8 +1,8 @@
-release=v1.0.2
-commit=1f1daad0a02e3f3ecfe341ef94dfb9bdbd59109c
-ref=v1.0.2
+release=main
+commit=9c4ff38834964294835ddcdc6c97ae76095843d0
+ref=main
 source=https://github.com/OpenNHP/opennhp
-built=2026-10-23
+built=2026-10-25
 ios_min=15.1
 android_api=21
 android_abis=arm64-v8a,armeabi-v7a,x86,x86_64

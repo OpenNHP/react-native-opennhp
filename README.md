@@ -11,7 +11,7 @@ The native libraries are already compiled. Install the package, add an agent con
 | --- | --- |
 | Platforms | iOS 15.1+ and Android (`minSdk` 24+, native libraries built for API 21) |
 | ABIs | `arm64-v8a`, `armeabi-v7a`, `x86`, `x86_64` |
-| OpenNHP pin | [v1.0.2](https://github.com/OpenNHP/opennhp/releases/tag/v1.0.2) (2026-09-11), the latest release |
+| OpenNHP pin | `main` commit [`9c4ff38`](https://github.com/OpenNHP/opennhp/commit/9c4ff38834964294835ddcdc6c97ae76095843d0) (2026-10-23) |
 | License | Apache-2.0, including the bundled OpenNHP SDK |
 
 Official OpenNHP agent SDK reference: [docs.opennhp.org/agent_sdk](https://docs.opennhp.org/agent_sdk/).
@@ -217,15 +217,15 @@ Argument and response details: [docs/api.md](docs/api.md).
 
 ## Which OpenNHP revision to ship
 
-This module tracks the latest OpenNHP release tag. It does not track a commit on `main`. A release tag is a numbered contract with release notes. `main` moves without one.
+This module normally tracks the latest OpenNHP release tag. A release tag is a numbered contract with release notes; `main` moves without one. The binaries are currently an exception: they are built from `main` because the agent-init fix this module needs ([OpenNHP PR #1806](https://github.com/OpenNHP/opennhp/pull/1806)) is merged on `main` but is not yet in a tagged release. Building from `main` lets the module drop the local copy of that fix instead of carrying a patch that now duplicates upstream.
 
-The binaries in this repository are pinned to [v1.0.2](https://github.com/OpenNHP/opennhp/releases/tag/v1.0.2) (2026-09-11), recorded in `OPENNHP_REVISION`. That tag points at commit `1f1daad`. It is the latest OpenNHP release.
+The binaries in this repository are built from `main` commit [`9c4ff38`](https://github.com/OpenNHP/opennhp/commit/9c4ff38834964294835ddcdc6c97ae76095843d0) (2026-10-23), recorded in `OPENNHP_REVISION`. The build also applies one local patch, `scripts/opennhp-agent-sdk.patch`, which adds the device-registration flow that the upstream mobile SDKs do not export (closed PRs [#1807](https://github.com/OpenNHP/opennhp/pull/1807) / [#1808](https://github.com/OpenNHP/opennhp/pull/1808), pending rework).
 
-When OpenNHP publishes a newer release, set `RELEASE` in `scripts/build-sdks.sh` to that tag, run the script, and update `OPENNHP_REVISION`. Do not point `RELEASE` at a raw commit.
+`scripts/build-sdks.sh` fetches `main` by default. To reproduce a specific build or move to a future release, pass a ref: `OPENNHP_REF=v1.0.3 ./scripts/build-sdks.sh`, then update `OPENNHP_REVISION`. Return to tracking release tags once a release carries PR #1806 and the registration flow lands upstream.
 
 ## Changelog
 
-`package.json` is still `0.1.0`. Work after that release is listed under Unreleased until the next publish. The 0.1.0 binaries were built from OpenNHP `main` commit `3c78548`. Unreleased moves the pin to release [v1.0.2](https://github.com/OpenNHP/opennhp/releases/tag/v1.0.2).
+`package.json` is still `0.1.0`. Work after that release is listed under Unreleased until the next publish. The 0.1.0 binaries were built from OpenNHP `main` commit `3c78548`. Unreleased moves the pin to `main` commit `9c4ff38`.
 
 ### Unreleased
 
@@ -234,7 +234,7 @@ When OpenNHP publishes a newer release, set `RELEASE` in `scripts/build-sdks.sh`
 - Start the agent from that stored key. `config.toml` is no longer where the private key lives. A leftover `PrivateKeyBase64` in that file makes startup fail until the file is deleted.
 - Add `getPublicKey` and `importAgentKey`. `importAgentKey` is the one call that accepts a private key, and it does not return it.
 - Keep the registration implementation in one OpenNHP agent file, `sdk_register.go`. The iOS and Android exports are wrappers around it.
-- Build the native libraries from OpenNHP release v1.0.2 instead of `main` commit `3c78548`.
+- Build the native libraries from OpenNHP `main` commit `9c4ff38`. The agent-init fix (PR #1806) is now merged upstream, so the build drops the local `opennhp-agent-init-fix.patch` and applies only the registration patch.
 
 ### 0.1.0 — 2026-10-22
 
@@ -244,7 +244,7 @@ When OpenNHP publishes a newer release, set `RELEASE` in `scripts/build-sdks.sh`
 
 ## To do
 
-- [x] Build from the latest OpenNHP release, v1.0.2, instead of a commit on `main`.
+- [ ] Return to building from a tagged OpenNHP release once a release includes the agent-init fix (PR #1806) and the registration flow is upstreamed. The build currently tracks `main` for those changes.
 - [ ] Move the iOS and Android SDKs into their own repository and include that repository here, so SDK releases and this React Native module can be updated separately.
 - [x] Store the agent private key in the iOS Keychain, and on Android encrypt it with an Android Keystore AES key. A raw Curve25519 or SM2 key cannot live in the Android Keystore itself.
 - [x] Keep the private key out of JavaScript. `generateKeys`, registration, and startup return or use only the public key.
