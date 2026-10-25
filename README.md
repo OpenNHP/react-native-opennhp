@@ -1,71 +1,49 @@
 # react-native-opennhp
 
+An [OpenNHP](https://github.com/OpenNHP/opennhp) client agent for React Native. Knock on an OpenNHP server from iOS and Android to open short-lived access to a protected resource.
+
 > [!WARNING]
-> This repository is in active development and is not for production use. Active security concerns still need to be addressed.
+> **Not production-ready.** This module is under active development and has open security concerns. Its native libraries are built from OpenNHP `main` plus a local patch (`scripts/opennhp-agent-sdk.patch`) that adds device registration, a change not yet merged upstream. Review that patch and pin a known commit before shipping.
 
-React Native module for the [OpenNHP](https://github.com/OpenNHP/opennhp) client agent. It embeds the OpenNHP iOS and Android agent SDK so an app can knock on an nhp-server and open short-lived, zero-trust access to a protected resource.
+The module bundles the OpenNHP iOS and Android agent SDK and exposes it to JavaScript. The native libraries are prebuilt, so you don't need Go, the Android NDK, or a manual Xcode build, unless you want to [rebuild them yourself](docs/building.md).
 
-The native libraries are already compiled. Install the package, add an agent config, and call the JavaScript API. You do not need Go, Xcode command-line builds, or the Android NDK unless you want to rebuild the SDK yourself.
+New to OpenNHP? Read the [OpenNHP documentation](https://docs.opennhp.org) first. This README covers the React Native binding only and assumes you already know what a knock is and have a reachable nhp-server.
 
-| | |
-| --- | --- |
-| Platforms | iOS 15.1+ and Android (`minSdk` 24+, native libraries built for API 21) |
-| ABIs | `arm64-v8a`, `armeabi-v7a`, `x86`, `x86_64` |
-| OpenNHP pin | `main` commit [`9c4ff38`](https://github.com/OpenNHP/opennhp/commit/9c4ff38834964294835ddcdc6c97ae76095843d0) (2026-10-23) |
-| License | Apache-2.0, including the bundled OpenNHP SDK |
+## Features
 
-Official OpenNHP agent SDK reference: [docs.opennhp.org/agent_sdk](https://docs.opennhp.org/agent_sdk/).
-
-## Contents
-
-- [Requirements](#requirements)
-- [Install](#install)
-- [Quick start](#quick-start)
-- [Become a trusted device](#become-a-trusted-device)
-- [Configuration](#configuration)
-- [API](#api)
-- [Which OpenNHP revision to ship](#which-opennhp-revision-to-ship)
-- [Changelog](#changelog)
-- [To do](#to-do)
-- [More documentation](#more-documentation)
+- Generates and stores the agent key in the iOS Keychain / Android Keystore. The private key never reaches JavaScript or touches disk.
+- Knock a resource on demand, or run a background knock loop over `resource.toml`.
+- Register servers and resources from JavaScript. No TOML required.
+- Enroll a device with a one-time password (`requestRegistrationOtp` / `registerDevice`), a flow the stock OpenNHP mobile SDKs don't expose.
 
 ## Requirements
 
-- React Native with autolinking (0.60 or newer), in a project you compile yourself. Expo Go cannot load this native module. Use a development build or `expo prebuild`.
-- iOS 15.1 or newer, CocoaPods, and a rebuild after `pod install`.
-- Android Gradle with Java 17. The library manifest adds `android.permission.INTERNET`.
-- A reachable nhp-server. The mobile agent speaks UDP directly to the server. It does not use the public HTTPS relay that the browser demo uses.
+- React Native 0.60+ with autolinking, in an app you build yourself. Expo Go can't load native modules, so use a development build or `expo prebuild`.
+- iOS 15.1+ with CocoaPods.
+- Android with Java 17 (`minSdk` 24; libraries built for API 21, ABIs `arm64-v8a`, `armeabi-v7a`, `x86`, `x86_64`).
+- A reachable nhp-server. The agent speaks UDP directly to it.
 
-## Install
-
-From the app directory, install this package from a local checkout or from git, then install pods:
+## Installation
 
 ```sh
-npm install /absolute/path/to/react-native-opennhp
+npm install react-native-opennhp
 cd ios && pod install
 ```
 
-```sh
-npm install github:YOUR_ORG/react-native-opennhp
-cd ios && pod install
-```
+Rebuild the app afterward; autolinking registers the `OpenNhp` native module. While this package is unpublished you can install it from a local path or a git URL instead of npm.
 
-Rebuild the iOS and Android apps after installing. Autolinking registers the `OpenNhp` native module.
+Two platform notes:
 
-If the nhp-server is on the local network, add this to the iOS app `Info.plist`. iOS otherwise blocks that UDP traffic:
+- **iOS, server on the local network.** Add this to the app's `Info.plist`, or iOS blocks the UDP traffic:
 
-```xml
-<key>NSLocalNetworkUsageDescription</key>
-<string>This app contacts the local OpenNHP server.</string>
-```
+  ```xml
+  <key>NSLocalNetworkUsageDescription</key>
+  <string>This app contacts the local OpenNHP server.</string>
+  ```
 
-Android emulators reach a server on the host machine at `10.0.2.2`, not `127.0.0.1`.
+- **Android emulator.** Reach a server running on your machine at `10.0.2.2`, not `127.0.0.1`.
 
-## Quick start
-
-The agent writes logs to `workingDirectory/logs/`. `getDefaultWorkingDirectory()` returns the iOS Documents directory or the Android app files directory. The private key never goes in a file or in JavaScript. `generateKeys` stores it in the iOS Keychain or in Android Keystore-wrapped storage, and returns only the public key.
-
-`Cipher.CURVE25519` (`0`) is the default. Use `Cipher.SM2` (`1`) only when the nhp-server uses SM2. The key and the server must use the same scheme.
+## Usage
 
 ```js
 import {
@@ -81,12 +59,14 @@ import {
 } from "react-native-opennhp";
 
 const workingDirectory = getDefaultWorkingDirectory();
-const keys = await generateKeys(Cipher.CURVE25519);
-// Give keys.publicKey to the auth service. The private key stays on the device.
+
+// Create the agent key once. Only the public key comes back; the private key
+// stays in the device's secure store. Hand publicKey to your auth service.
+const { publicKey } = await generateKeys(Cipher.CURVE25519);
 
 const ready = await initializeAgent(workingDirectory, LogLevel.INFO);
 if (!ready) {
-  throw new Error("OpenNHP failed to start. Read workingDirectory/logs.");
+  throw new Error("OpenNHP failed to start. Check workingDirectory/logs.");
 }
 
 await setKnockUser({
@@ -109,34 +89,20 @@ if (ack.errCode !== "0") {
 }
 ```
 
-`initializeAgent` takes about a second because the SDK waits during startup. `knockResource` waits for the server round trip. `ack.opnTime` is how many seconds the server opened access. `ack.resHost` maps resource host names to addresses.
+Notes:
 
-When the server was added with `addServer`, pass that server's public key as the `cluster` argument. When the server comes from `server.toml`, pass the `[[Servers]] Name` instead.
+- `initializeAgent` and `knockResource` each take about a second (SDK startup, then the server round trip).
+- For the `cluster` argument, pass the server's public key when you added it with `addServer`, or the `[[Servers]] Name` when it comes from `server.toml`.
+- Use `Cipher.SM2` (`1`) only when the server uses SM2. The key and the server must use the same scheme.
 
-## Become a trusted device
+See [docs/getting-started.md](docs/getting-started.md) for a fuller walkthrough.
 
-A knock is accepted only after the auth service knows this device's public key. There are two ways to get there.
+## Device registration
 
-### Add the public key by hand
+A knock is accepted only once the auth service trusts the device's public key. You can do this two ways:
 
-`generateKeys` creates the key in the device secure store and returns `publicKey`. Give that public key to whoever administers the auth service. They add it as a trusted device for that user. No email step is involved. The app can knock once that key is recognized.
-
-```js
-import { Cipher, generateKeys } from "react-native-opennhp";
-
-const keys = await generateKeys(Cipher.CURVE25519);
-// Register keys.publicKey with the auth service by hand.
-```
-
-A key created outside the app can be installed once with `importAgentKey({ privateKey, cipher })`. That call stores the key and returns `publicKey`. It does not return the private key.
-
-### Register with a one-time password
-
-The app can enroll itself. `requestRegistrationOtp` asks the server to email a code, then `registerDevice` submits that code with the public key already in the secure store. The server needs SMTP for that mail.
-
-Put `etc/server.toml` in the working directory first so the agent can find the nhp-server. On a server installed with the OpenNHP installer, a debug configuration also writes the one-time password to the server logs. Use that log line when mail is not being delivered.
-
-The published OpenNHP iOS and Android SDKs do not export this flow. These two methods are provided by this module.
+- **Out of band.** Call `generateKeys`, then give `publicKey` to whoever administers the auth service to add as a trusted device.
+- **One-time password.** The app enrolls itself: `requestRegistrationOtp` asks the server to email a code, and `registerDevice` submits that code with the stored public key. The server needs SMTP configured.
 
 ```js
 import { requestRegistrationOtp, registerDevice } from "react-native-opennhp";
@@ -150,9 +116,7 @@ const pending = await requestRegistrationOtp({
   resId: "demo",
   cluster: "production",
 });
-if (pending.errCode !== "0") {
-  throw new Error(pending.errMsg || "OTP request failed");
-}
+if (pending.errCode !== "0") throw new Error(pending.errMsg || "OTP request failed");
 
 const registered = await registerDevice({
   workingDirectory,
@@ -166,83 +130,62 @@ const registered = await registerDevice({
 });
 ```
 
-`registered.errCode === "0"` means the server accepted the public key. The private key is already in the secure store, so the next launch only needs `initializeAgent`. `expiresAt` is a Unix timestamp when the server set a key lifetime. `close()` does not delete the stored key.
+`registered.errCode === "0"` means the server accepted the key. It's already in the secure store, so later launches only need `initializeAgent`. The registration methods are added by this module; the upstream OpenNHP mobile SDKs don't export them.
+
+## API
+
+Every method except `getDefaultWorkingDirectory()` returns a promise, and native calls run one at a time.
+
+| Method | Description |
+| --- | --- |
+| `getDefaultWorkingDirectory()` | App directory to use as `workingDirectory`. |
+| `generateKeys(cipher)` | Create a key in the secure store. Resolves `{ publicKey }`. |
+| `getPublicKey()` | Public key of the stored key, or `""` when none is stored. |
+| `importAgentKey({ privateKey, cipher })` | Store a key created elsewhere. Resolves `{ publicKey }`; never returns the private key. |
+| `requestRegistrationOtp(options)` | Ask the server to email a one-time password for the device. |
+| `registerDevice(options)` | Register the stored public key with that one-time password. |
+| `initializeAgent(dir, logLevel)` | Start the agent from the stored key. Resolves `false` if no key is stored or startup fails. |
+| `close()` | Stop the agent. Does not delete the stored key. |
+| `setKnockUser({ userId, deviceId, orgId, userData })` | Identity sent with each knock. |
+| `addServer({ pubkey, ip, host, port, expire })` | Register a server. Port `0` means `62206`; expire `0` never expires. |
+| `removeServer(pubkey)` | Drop a server added with `addServer`. |
+| `addResource(aspId, resId, cluster)` | Add a resource to the knock loop. |
+| `removeResource(aspId, resId)` | Remove a resource from the knock loop. |
+| `knockResource(aspId, resId, cluster)` | One knock; resolves to the server's JSON ack. |
+| `exitResource(aspId, resId, cluster)` | Ask the server to drop access early. |
+| `startKnockLoop()` | Knock every resource in `resource.toml`; resolves the resource count, or `-1` if not started. |
+| `stopKnockLoop()` | Stop the background knock loop. |
+
+`LogLevel` runs `0` silent, `1` error, `2` info, `3` debug, `4` verbose. Full argument and response shapes are in [docs/api.md](docs/api.md).
 
 ## Configuration
 
-Layout the SDK expects:
+The SDK reads TOML from a working directory:
 
 ```text
 <workingDirectory>/
   etc/
-    server.toml      optional if you call addServer
-    resource.toml    optional; startKnockLoop knocks these resources
+    server.toml      optional, or call addServer
+    resource.toml    optional; startKnockLoop knocks these
     dhp.toml         optional
   logs/              created by the SDK
 ```
 
-Do not write `etc/config.toml`. The agent private key lives in the iOS Keychain, or in ciphertext wrapped by an Android Keystore AES key. The account name is `org.opennhp.agent` / `agent-private-key`. If an older `config.toml` still contains `PrivateKeyBase64`, `initializeAgent` rejects it until that file is deleted.
+Do **not** create `etc/config.toml`. The private key lives in the iOS Keychain or in Android Keystore-wrapped storage, not in a file, and `initializeAgent` refuses to start if `config.toml` still contains a `PrivateKeyBase64`. Field reference and the knock loop: [docs/configuration.md](docs/configuration.md).
 
-`example/etc` contains the OpenNHP docker demo files, including a sample `config.toml` this module does not read. Those files use a published demo key and the docker addresses `177.7.0.9` and `177.7.0.14`. Replace the server addresses before pointing an app at a real server.
+## Building from source
 
-Full field reference and the knock loop: [docs/configuration.md](docs/configuration.md).
+The prebuilt binaries are built from OpenNHP `main` commit [`9c4ff38`](https://github.com/OpenNHP/opennhp/commit/9c4ff38834964294835ddcdc6c97ae76095843d0) (recorded in `OPENNHP_REVISION`) plus the local registration patch. `scripts/build-sdks.sh` fetches `main` by default; pass `OPENNHP_REF=<tag|commit>` to pin a different revision. See [docs/building.md](docs/building.md).
 
-## API
+## Learn more about OpenNHP
 
-Every method except `getDefaultWorkingDirectory()` returns a promise. Native calls run one at a time.
+This module is just the React Native binding. For the protocol, server setup, and agent concepts, go to the source:
 
-| Method | What it does |
-| --- | --- |
-| `getDefaultWorkingDirectory()` | App directory to use as `workingDirectory`. |
-| `generateKeys(cipher)` | Create a key in the secure store. Resolves `{ publicKey }`. `Cipher.CURVE25519` (`0`) or `Cipher.SM2` (`1`). |
-| `getPublicKey()` | Public key of the stored agent key, or an empty string when none is stored. |
-| `importAgentKey({ privateKey, cipher })` | Store a key created outside the app. Resolves `{ publicKey }`. |
-| `requestRegistrationOtp(options)` | Email a one-time password for the stored key, or generate and store one. |
-| `registerDevice(options)` | Register the stored public key with the one-time password. |
-| `initializeAgent(dir, logLevel)` | Start the agent from the stored key. Returns `false` when no key is stored or startup fails. |
-| `close()` | Stop the agent and release it. |
-| `setKnockUser({ userId, deviceId, orgId, userData })` | Identity sent with each knock. |
-| `addServer({ pubkey, ip, host, port, expire })` | Register one nhp-server. Port `0` uses `62206`. Expire `0` does not expire. |
-| `removeServer(pubkey)` | Drop a server registered with `addServer`. |
-| `addResource(aspId, resId, cluster)` | Add a resource to the knock loop. |
-| `removeResource(aspId, resId)` | Remove a resource from the knock loop. |
-| `knockResource(aspId, resId, cluster)` | One knock. Resolves to the server JSON. |
-| `exitResource(aspId, resId, cluster)` | Ask the server to drop access early. |
-| `startKnockLoop()` | Knock every resource in `resource.toml`. Returns the resource count, or `-1` when the agent is not started. |
-| `stopKnockLoop()` | Stop the background knock loop. |
+- Project: [github.com/OpenNHP/opennhp](https://github.com/OpenNHP/opennhp)
+- Documentation: [docs.opennhp.org](https://docs.opennhp.org)
+- Agent SDK reference: [docs.opennhp.org/agent_sdk](https://docs.opennhp.org/agent_sdk/)
 
-`LogLevel` for `initializeAgent` is `0` silent, `1` error, `2` info, `3` debug, `4` verbose. That argument is the log level when `config.toml` is absent.
-
-Argument and response details: [docs/api.md](docs/api.md).
-
-## Which OpenNHP revision to ship
-
-This module normally tracks the latest OpenNHP release tag. A release tag is a numbered contract with release notes; `main` moves without one. The binaries are currently an exception: they are built from `main` because the agent-init fix this module needs ([OpenNHP PR #1806](https://github.com/OpenNHP/opennhp/pull/1806)) is merged on `main` but is not yet in a tagged release. Building from `main` lets the module drop the local copy of that fix instead of carrying a patch that now duplicates upstream.
-
-The binaries in this repository are built from `main` commit [`9c4ff38`](https://github.com/OpenNHP/opennhp/commit/9c4ff38834964294835ddcdc6c97ae76095843d0) (2026-10-23), recorded in `OPENNHP_REVISION`. The build also applies one local patch, `scripts/opennhp-agent-sdk.patch`, which adds the device-registration flow that the upstream mobile SDKs do not export (closed PRs [#1807](https://github.com/OpenNHP/opennhp/pull/1807) / [#1808](https://github.com/OpenNHP/opennhp/pull/1808), pending rework).
-
-`scripts/build-sdks.sh` fetches `main` by default. To reproduce a specific build or move to a future release, pass a ref: `OPENNHP_REF=v1.0.3 ./scripts/build-sdks.sh`, then update `OPENNHP_REVISION`. Return to tracking release tags once a release carries PR #1806 and the registration flow lands upstream.
-
-## Changelog
-
-`package.json` is still `0.1.0`. Work after that release is listed under Unreleased until the next publish. The 0.1.0 binaries were built from OpenNHP `main` commit `3c78548`. Unreleased moves the pin to `main` commit `9c4ff38`.
-
-### Unreleased
-
-- Add `requestRegistrationOtp` and `registerDevice`. The upstream iOS and Android SDKs do not export device registration, so this module adds that flow.
-- Store the agent private key in the iOS Keychain, and on Android encrypt it with an Android Keystore AES key. JavaScript receives the public key only.
-- Start the agent from that stored key. `config.toml` is no longer where the private key lives. A leftover `PrivateKeyBase64` in that file makes startup fail until the file is deleted.
-- Add `getPublicKey` and `importAgentKey`. `importAgentKey` is the one call that accepts a private key, and it does not return it.
-- Keep the registration implementation in one OpenNHP agent file, `sdk_register.go`. The iOS and Android exports are wrappers around it.
-- Build the native libraries from OpenNHP `main` commit `9c4ff38`. The agent-init fix (PR #1806) is now merged upstream, so the build drops the local `opennhp-agent-init-fix.patch` and applies only the registration patch.
-
-### 0.1.0 — 2026-10-22
-
-- First release of the React Native module for the OpenNHP client agent.
-- Ship prebuilt libraries for iOS 15.1+ and Android ABIs `arm64-v8a`, `armeabi-v7a`, `x86`, and `x86_64`.
-- Knock, run the knock loop, add and remove servers and resources, and generate keys from JavaScript.
-
-## More documentation
+## Documentation
 
 - [Getting started](docs/getting-started.md)
 - [Configuration](docs/configuration.md)
@@ -251,4 +194,18 @@ The binaries in this repository are built from `main` commit [`9c4ff38`](https:/
 - [Troubleshooting](docs/troubleshooting.md)
 - [Rebuild the native SDK](docs/building.md)
 
-Upstream agent SDK: [docs.opennhp.org/agent_sdk](https://docs.opennhp.org/agent_sdk/). The bundled OpenNHP license is [licenses/OpenNHP-Apache-2.0.txt](licenses/OpenNHP-Apache-2.0.txt).
+## Changelog
+
+### 0.2.0
+
+- Add device registration: `requestRegistrationOtp` and `registerDevice`, plus `getPublicKey` and `importAgentKey`.
+- Keep the agent private key in the iOS Keychain / Android Keystore. It is never returned to JavaScript. A generated key is handed to native secure storage through a dedicated channel, never in a response body.
+- Build the native libraries from OpenNHP `main`, since the agent-init fix this module needs ([PR #1806](https://github.com/OpenNHP/opennhp/pull/1806)) is merged there but not yet in a release.
+
+### 0.1.0
+
+- First release: knock, the knock loop, server/resource management, and key generation from JavaScript. Prebuilt for iOS 15.1+ and Android `arm64-v8a`, `armeabi-v7a`, `x86`, `x86_64`.
+
+## License
+
+Apache-2.0, including the bundled OpenNHP SDK. See [licenses/OpenNHP-Apache-2.0.txt](licenses/OpenNHP-Apache-2.0.txt).

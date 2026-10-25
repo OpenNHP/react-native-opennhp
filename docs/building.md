@@ -1,6 +1,6 @@
 # Rebuild the native SDK
 
-The iOS xcframework and Android `.so` files are already in the repository. Rebuild when OpenNHP publishes a release you want to ship.
+The iOS xcframework and Android `.so` files are already in the repository. Rebuild only when you want to move to a different OpenNHP revision or change the local patch.
 
 ## Pin a revision
 
@@ -9,8 +9,7 @@ normally tracks a release tag, not a commit on `main`, because building whatever
 `main` happens to be makes a build unreproducible. The current build is a
 deliberate exception: it tracks `main` because the agent-init fix the module
 needs ([OpenNHP PR #1806](https://github.com/OpenNHP/opennhp/pull/1806)) is
-merged on `main` but not yet in a tagged release. See the README's "Which
-OpenNHP revision to ship" for the full rationale.
+merged on `main` but not yet in a tagged release.
 
 Current pin: `main` commit [`9c4ff38`](https://github.com/OpenNHP/opennhp/commit/9c4ff38834964294835ddcdc6c97ae76095843d0) (2026-10-23).
 

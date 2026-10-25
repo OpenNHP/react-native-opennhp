@@ -1,6 +1,6 @@
 {
   "name": "react-native-opennhp",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "React Native module for the OpenNHP client agent. Knock on OpenNHP servers from iOS and Android.",
   "keywords": [
     "react-native",

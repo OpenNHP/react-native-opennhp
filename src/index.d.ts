@@ -38,7 +38,8 @@ export type KnockAck = {
   opnTime?: number;
   aspToken?: string;
   agentAddr?: string;
-  preActs?: unknown;
+  acTokens?: Record<string, string>;
+  preActions?: Record<string, unknown>;
   redirectUrl?: string;
   raw?: string;
   [key: string]: unknown;

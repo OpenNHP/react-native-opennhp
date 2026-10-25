@@ -139,7 +139,7 @@ Sends one knock. Resolves to the server acknowledgement:
 
 ```ts
 type KnockAck = {
-  errCode?: string;
+  errCode?: string | number;
   errMsg?: string;
   resHost?: Record<string, string>;
   opnTime?: number;
@@ -200,6 +200,8 @@ type RegistrationResult = {
   errCode?: string;
   errMsg?: string;
   publicKey?: string;
+  aspId?: string;
+  expiresAt?: number;
   raw?: string;
 };
 ```
