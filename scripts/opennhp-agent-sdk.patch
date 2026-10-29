@@ -158,10 +158,10 @@ index 64aa440..75ed0bc 100644
 +}
 diff --git a/endpoints/agent/sdk_register.go b/endpoints/agent/sdk_register.go
 new file mode 100644
-index 0000000..f4ebb7b
+index 0000000..2f8afe4
 --- /dev/null
 +++ b/endpoints/agent/sdk_register.go
-@@ -0,0 +1,330 @@
+@@ -0,0 +1,369 @@
 +package agent
 +
 +import (
@@ -171,6 +171,8 @@ index 0000000..f4ebb7b
 +	"os"
 +	"path/filepath"
 +	"sync"
++	"sync/atomic"
++	"time"
 +
 +	"github.com/OpenNHP/opennhp/nhp/common"
 +	"github.com/OpenNHP/opennhp/nhp/core"
@@ -428,6 +430,32 @@ index 0000000..f4ebb7b
 +	}
 +}
 +
++// waitForOtpSend blocks until the agent has transmitted the pending OTP
++// datagram (its sent-byte counter advances past baseline) or timeout elapses.
++//
++// RequestOtp only enqueues the packet; sendMessageRoutine transmits it
++// asynchronously via SendPacket, which bumps stats.totalSendBytes once the
++// datagram is written to the socket. NHP-OTP is fire-and-forget (the server
++// sends no ack, unlike NHP-REG), so a sent-byte advance is the only completion
++// signal available agent-side. The caller MUST NOT Stop the owned agent before
++// this returns true, or Stop() closes the device send queue underneath the
++// in-flight packet and it is dropped (or, without the core recover guard,
++// panics). Once the counter advances the UDP write has returned, so a later
++// Stop cannot un-send the datagram. An upstream RequestOtp that blocks until
++// the packet is sent would make this return immediately.
++func waitForOtpSend(a *UdpAgent, baseline uint64, timeout time.Duration) bool {
++	deadline := time.Now().Add(timeout)
++	for {
++		if atomic.LoadUint64(&a.stats.totalSendBytes) > baseline {
++			return true
++		}
++		if !time.Now().Before(deadline) {
++			return false
++		}
++		time.Sleep(10 * time.Millisecond)
++	}
++}
++
 +// RequestRegistrationOtp sends NHP-OTP for this agent key. An empty privateKey
 +// generates a key only when no agent is running. A running agent is never re-keyed.
 +// When a key is generated it is not returned in the result; the caller retrieves
@@ -443,9 +471,20 @@ index 0000000..f4ebb7b
 +	if target == nil {
 +		return result
 +	}
++	sentBaseline := atomic.LoadUint64(&instance.stats.totalSendBytes)
 +	if err := instance.RequestOtp(target); err != nil {
 +		result.ErrCode = registrationErrorCode(err)
 +		result.ErrMsg = err.Error()
++		return result
++	}
++	// RequestOtp only queued the packet. Wait for it to actually leave the
++	// socket before the deferred finishOwnedAgent Stops this throwaway agent,
++	// otherwise the fire-and-forget OTP datagram is dropped during shutdown and
++	// never reaches the server. Report an error rather than a false success if
++	// it never goes out (e.g. the server address cannot be resolved).
++	if !waitForOtpSend(instance, sentBaseline, 3*time.Second) {
++		result.ErrCode = registrationErrorCode(common.ErrPacketToMessageRoutineStopped)
++		result.ErrMsg = "otp request was not transmitted; check the server address and network"
 +		return result
 +	}
 +	// A key was generated here only when the caller passed none; hand it to

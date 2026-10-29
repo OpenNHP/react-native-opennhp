@@ -2,11 +2,16 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-# Build the SDKs from the OpenNHP main branch. The agent-init fix (OpenNHP
-# PR #1806) is merged there, so only the SDK device-registration patch is still
-# applied below. Override to pin a build to a tag, branch, or commit:
-#   OPENNHP_REF=v1.0.3 ./scripts/build-sdks.sh
-REF="${OPENNHP_REF:-main}"
+# Build the SDKs from the OpenNHP SDK-registration branch, where the iOS/Android
+# device-registration changes are committed. Override to build a different
+# remote/branch/tag/commit:
+#   OPENNHP_REMOTE=https://github.com/OpenNHP/opennhp.git OPENNHP_REF=v1.0.3 ./scripts/build-sdks.sh
+REMOTE="${OPENNHP_REMOTE:-https://github.com/justingreerbbi/opennhp.git}"
+REF="${OPENNHP_REF:-feat/sdk-ios-android-register-expose}"
+# The registration changes are committed on that branch, so the local patch is
+# not applied. To build a base that lacks them (e.g. plain OpenNHP main) and
+# apply scripts/opennhp-agent-sdk.patch instead, set OPENNHP_SKIP_PATCH=0.
+SKIP_PATCH="${OPENNHP_SKIP_PATCH:-1}"
 SRC="$ROOT/third_party/opennhp"
 ENDPOINTS="$SRC/endpoints"
 OUT="$ROOT/build/sdks"
@@ -16,16 +21,18 @@ export PATH="$(go env GOPATH)/bin:$PATH"
 
 if [ ! -d "$SRC/.git" ]; then
   mkdir -p "$ROOT/third_party"
-  git clone https://github.com/OpenNHP/opennhp.git "$SRC"
+  git clone "$REMOTE" "$SRC"
 fi
 
-git -C "$SRC" fetch --depth 1 origin "$REF"
+git -C "$SRC" fetch --depth 1 "$REMOTE" "$REF"
 git -C "$SRC" checkout -f FETCH_HEAD
-# Start from a pristine tree so a re-run does not trip over the previous apply:
-# the SDK patch adds a new untracked file (endpoints/agent/sdk_register.go).
+# Start from a pristine tree so a re-run does not carry over a previous apply
+# (the patch adds untracked files under endpoints/agent).
 git -C "$SRC" clean -fd endpoints/agent
-git -C "$SRC" apply "$ROOT/scripts/opennhp-agent-sdk.patch"
-echo "OpenNHP source at $(git -C "$SRC" rev-parse HEAD) (ref $REF)"
+if [ "$SKIP_PATCH" != "1" ]; then
+  git -C "$SRC" apply "$ROOT/scripts/opennhp-agent-sdk.patch"
+fi
+echo "OpenNHP source at $(git -C "$SRC" rev-parse HEAD) (ref $REF, skip_patch=$SKIP_PATCH)"
 
 (
   cd "$ENDPOINTS"

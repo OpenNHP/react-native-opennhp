@@ -1,8 +1,8 @@
-release=main
-commit=9c4ff38834964294835ddcdc6c97ae76095843d0
-ref=main
-source=https://github.com/OpenNHP/opennhp
-built=2026-10-25
+release=feat/sdk-ios-android-register-expose
+commit=78f033b83121a8016e878701ec226fd10f0b2d71
+ref=feat/sdk-ios-android-register-expose
+source=https://github.com/justingreerbbi/opennhp
+built=2026-10-26
 ios_min=15.1
 android_api=21
 android_abis=arm64-v8a,armeabi-v7a,x86,x86_64
